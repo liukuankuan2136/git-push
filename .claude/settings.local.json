@@ -7,7 +7,12 @@
       "Bash(Get-ChildItem -Path c:\\\\code\\\\mydemo -Depth 2 -Directory)",
       "Bash(Select-Object FullName)",
       "Bash(dir /s /b src\\\\*.ts)",
-      "Bash(Select-Object -First 30)"
+      "Bash(Select-Object -First 30)",
+      "Bash(mv '插件设置.gif' settings.gif)",
+      "Bash(mv '登陆.gif' login.gif)",
+      "Bash(mv '登陆成功.png' login-success.png)",
+      "Bash(mv '代码推送&devops平台登记.gif' push-and-devops.gif)",
+      "Bash(mv '代码推送日志.png' push-log.png)"
     ]
   }
 }

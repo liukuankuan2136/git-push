@@ -13,7 +13,7 @@
 
 ### 0. 插件配置
 
-![插件配置](./imgs/插件设置.gif)
+![插件配置](https://raw.githubusercontent.com/liukuankuan2136/git-push/main/imgs/settings.gif)
 
 三种写入模式支持独立配置：
 
@@ -35,11 +35,11 @@
 
 #### 步骤演示
 
-![初始化](./imgs/登陆.gif)
+![初始化](https://raw.githubusercontent.com/liukuankuan2136/git-push/main/imgs/login.gif)
 
 #### 结果示例
 
-![初始化成功](./imgs/登陆成功.png)
+![初始化成功](https://raw.githubusercontent.com/liukuankuan2136/git-push/main/imgs/login-success.png)
 
 ### 2. 推送代码并登记 DevOps
 
@@ -63,14 +63,14 @@
 
 #### 步骤演示
 
-![代码推送&DevOps平台登记](./imgs/代码推送&devops平台登记.gif)
+![代码推送&DevOps平台登记](https://raw.githubusercontent.com/liukuankuan2136/git-push/main/imgs/push-and-devops.gif)
 
 #### 结果示例
 
 **代码推送日志：**
 
-![代码推送日志](./imgs/代码推送日志.png)
+![代码推送日志](https://raw.githubusercontent.com/liukuankuan2136/git-push/main/imgs/push-log.png)
 
 **DevOps 平台工时登记：**
 
-![DevOps工时登记](./imgs/devops工时登记.png)
+![DevOps工时登记](https://raw.githubusercontent.com/liukuankuan2136/git-push/main/imgs/devops-workhour.png)
