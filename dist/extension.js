@@ -253,7 +253,10 @@ async function recordHours(provider, metadata, config) {
         });
     }
     else if (provider.addWorkHour) {
-        const workContent = `• ${metadata.subject}`;
+        // @AI-Begin X5Y6Z 20260526 @@cc
+        const sanitizedSubject = metadata.subject.replace(/^[•\-\*\+]\s*/, '');
+        const workContent = `• ${sanitizedSubject}`;
+        // @AI-End X5Y6Z 20260526 @@cc
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: '正在登记工时到 DevOps',
@@ -279,7 +282,10 @@ function calcDayCompletion(metadata, mode) {
     return `${input}%`;
 }
 function calcWorkContent(metadata, mode) {
-    const entry = `• ${metadata.subject}`;
+    // @AI-Begin X5Y6Z 20260526 @@cc
+    const sanitizedSubject = metadata.subject.replace(/^[•\-\*\+]\s*/, '');
+    const entry = `• ${sanitizedSubject}`;
+    // @AI-End X5Y6Z 20260526 @@cc
     if (mode === 'append' && metadata.todayWorkHour) {
         return metadata.todayWorkHour.workContent + '\n' + entry;
     }

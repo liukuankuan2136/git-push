@@ -289,7 +289,10 @@ async function recordHours(
       }
     );
   } else if (provider.addWorkHour) {
-    const workContent = `• ${metadata.subject}`;
+    // @AI-Begin X5Y6Z 20260526 @@cc
+    const sanitizedSubject = metadata.subject.replace(/^[•\-\*\+]\s*/, '');
+    const workContent = `• ${sanitizedSubject}`;
+    // @AI-End X5Y6Z 20260526 @@cc
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -328,7 +331,10 @@ function calcDayCompletion(metadata: DevOpsCommitMetadata, mode: 'append' | 'ove
 }
 
 function calcWorkContent(metadata: DevOpsCommitMetadata, mode: 'append' | 'overwrite'): string {
-  const entry = `• ${metadata.subject}`;
+  // @AI-Begin X5Y6Z 20260526 @@cc
+  const sanitizedSubject = metadata.subject.replace(/^[•\-\*\+]\s*/, '');
+  const entry = `• ${sanitizedSubject}`;
+  // @AI-End X5Y6Z 20260526 @@cc
   if (mode === 'append' && metadata.todayWorkHour) {
     return metadata.todayWorkHour.workContent + '\n' + entry;
   }
