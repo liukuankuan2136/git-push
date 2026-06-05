@@ -7,6 +7,9 @@ const DEVOPS_BASE_URL = 'https://devops.ctjsoft.com';
 const DEVOPS_PAGE_ID = 'AbY8d4R';
 const DEVOPS_TOP_MENU_ID = 'DevPro';
 const DEVOPS_GROUP_ID = '1';
+// @AI-Begin P5Q6R 20260604 @@cc
+const TASK_QUERY_PAGE_ID = 'h7BdNkJ';
+const TASK_QUERY_TOP_MENU_ID = 'OA';
 class CompanyDevOpsAdapter {
     options;
     name = 'Company DevOps';
@@ -37,10 +40,10 @@ class CompanyDevOpsAdapter {
         }
         return projects;
     }
-    // @AI-Begin R2S5T 20260519 @@cc
+    // @AI-Begin P5Q6R 20260604 @@cc
     async fetchTasks(type) {
         const session = await this.getSession();
-        const groupValue = `executeUser7770$${session.userId}`;
+        const groupValue = `executeUser7752$${session.userId}`;
         const raw = await (0, http_1.fetchJson)(this.name, `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`, {
             method: 'POST',
             timeoutMs: this.options.timeoutMs,
@@ -50,34 +53,72 @@ class CompanyDevOpsAdapter {
                 origin: DEVOPS_BASE_URL,
                 'user-context': JSON.stringify({
                     userId: session.userId,
-                    pageId: DEVOPS_PAGE_ID
+                    pageId: TASK_QUERY_PAGE_ID
                 })
             },
             body: JSON.stringify({
                 simpleFieldCondition: {
-                    topMenuId: DEVOPS_TOP_MENU_ID,
-                    pageId: DEVOPS_PAGE_ID,
+                    topMenuId: TASK_QUERY_TOP_MENU_ID,
+                    pageId: TASK_QUERY_PAGE_ID,
                     currentUser: session.userId,
                     currentProductId: 'undefined',
-                    configFlag: type === 'task' ? 'Task' : 'Bug',
+                    configFlag: 'all',
+                    executeUser: [session.userId],
                     parentId: groupValue,
                     taskTypeQueryRule: '0',
-                    progressStatus: 'incomplete',
-                    executeUser: [session.userId]
+                    progressStatus: 'incomplete'
                 },
                 groupId: '6',
                 groupField: 'executeUser',
                 groupFieldValue: groupValue,
                 parentGroupInfos: [],
-                groupTaskCount: 5
+                groupTaskCount: 23
             })
         });
-        const arr = Array.isArray(raw) ? raw : raw.data ?? [];
-        return arr
+        const taskItems = collectTaskItems(raw);
+        return taskItems
+            .filter((item) => !isStoryItem(item))
             .map((item) => this.toTask(item, type))
-            .filter((task) => task.code && task.title);
+            .filter((task) => task.code && task.title && !task.code.includes('$'));
     }
-    // @AI-End R2S5T 20260519 @@cc
+    // @AI-End P5Q6R 20260604 @@cc
+    // @AI-Begin P5Q6R 20260604 @@cc
+    async fetchTaskByCode(code, type) {
+        const session = await this.getSession();
+        const raw = await (0, http_1.fetchJson)(this.name, `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`, {
+            method: 'POST',
+            timeoutMs: this.options.timeoutMs,
+            headers: {
+                'content-type': 'application/json',
+                cookie: session.cookie,
+                origin: DEVOPS_BASE_URL,
+                'user-context': JSON.stringify({
+                    userId: session.userId,
+                    pageId: TASK_QUERY_PAGE_ID
+                })
+            },
+            body: JSON.stringify({
+                simpleFieldCondition: {
+                    topMenuId: TASK_QUERY_TOP_MENU_ID,
+                    pageId: TASK_QUERY_PAGE_ID,
+                    currentUser: session.userId,
+                    currentProductId: 'undefined',
+                    configFlag: 'all',
+                    taskTypeQueryRule: '0',
+                    progressStatus: '',
+                    params: code
+                },
+                groupId: '6'
+            })
+        });
+        const taskItems = collectTaskItems(raw);
+        const tasks = taskItems
+            .filter((item) => !isStoryItem(item))
+            .map((item) => this.toTask(item, type))
+            .filter((task) => task.code && task.title && !task.code.includes('$'));
+        return tasks.length > 0 ? tasks[0] : undefined;
+    }
+    // @AI-End P5Q6R 20260604 @@cc
     async testConnection() {
         await this.getSession();
         return true;
@@ -353,11 +394,33 @@ function collectTaskObjects(value, items) {
         return;
     }
     const record = value;
+    // @AI-Begin P5Q6R 20260604 @@cc
+    // 保留 taskId / id，因为按 params 查询时有些 item 只有 taskId；分组包装对象靠后续 $ 过滤排除
     if (record.taskNo || record.problemNo || record.code || record.taskCode || record.bugCode || record.taskId || record.id) {
         items.push(record);
     }
+    // @AI-End P5Q6R 20260604 @@cc
     for (const child of Object.values(record)) {
         collectTaskObjects(child, items);
     }
 }
+// @AI-Begin P5Q6R 20260604 @@cc
+function isStoryItem(item) {
+    if (!item || typeof item !== 'object') {
+        return false;
+    }
+    const record = item;
+    const typeFields = ['taskType', 'typeName', 'type', 'workItemType'];
+    for (const field of typeFields) {
+        const value = record[field];
+        if (typeof value === 'string') {
+            const normalized = value.toLowerCase().trim();
+            if (normalized === 'story' || normalized === '需求') {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+// @AI-End P5Q6R 20260604 @@cc
 //# sourceMappingURL=CompanyDevOpsAdapter.js.map

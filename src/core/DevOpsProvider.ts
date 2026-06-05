@@ -60,6 +60,9 @@ export interface DevOpsProvider {
   fetchProjects(): Promise<DevOpsProject[]>;
   fetchTasks(type: DevOpsTaskType): Promise<DevOpsTask[]>;
   testConnection(): Promise<boolean>;
+  // @AI-Begin P5Q6R 20260604 @@cc
+  fetchTaskByCode?(code: string, type: DevOpsTaskType): Promise<DevOpsTask | undefined>;
+  // @AI-End P5Q6R 20260604 @@cc
   // @AI-Begin A1B2C 20260518 @@cc
   fetchWorkHours?(taskId: string): Promise<WorkHourRecord[]>;
   // @AI-End A1B2C 20260518 @@cc

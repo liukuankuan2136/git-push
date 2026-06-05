@@ -268,49 +268,65 @@ async function recordHours(
   const dayCompletion = calcDayCompletion(metadata, config.progressMode);
   const taskId = metadata.task.id || metadata.task.code;
 
+  // @AI-Begin P5Q6R 20260604 @@cc
+  const taskLabel = metadata.task.type === 'task' ? '任务' : '缺陷';
+
   if (metadata.todayWorkHour && provider.modifyWorkHour) {
     const workContent = calcWorkContent(metadata, config.workContentMode);
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: '正在更新今日工时到 DevOps',
-        cancellable: false
-      },
-      async () => {
-        await provider.modifyWorkHour!(
-          metadata.todayWorkHour!.taskWorkhourId,
-          taskId,
-          createTime,
-          spendTaskTime,
-          dayCompletion,
-          workContent,
-          metadata.workHourTypeCode
-        );
-      }
-    );
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: '正在更新今日工时到 DevOps',
+          cancellable: false
+        },
+        async () => {
+          await provider.modifyWorkHour!(
+            metadata.todayWorkHour!.taskWorkhourId,
+            taskId,
+            createTime,
+            spendTaskTime,
+            dayCompletion,
+            workContent,
+            metadata.workHourTypeCode
+          );
+        }
+      );
+    } catch (error) {
+      throw new Error(
+        `工时更新失败：${error instanceof Error ? error.message : String(error)}。请确认${taskLabel}编号 "${metadata.task.code}" 是否正确。`
+      );
+    }
   } else if (provider.addWorkHour) {
     // @AI-Begin X5Y6Z 20260526 @@cc
     const sanitizedSubject = metadata.subject.replace(/^[•\-\*\+]\s*/, '');
     const workContent = `• ${sanitizedSubject}`;
     // @AI-End X5Y6Z 20260526 @@cc
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: '正在登记工时到 DevOps',
-        cancellable: false
-      },
-      async () => {
-        await provider.addWorkHour!(
-          taskId,
-          createTime,
-          spendTaskTime,
-          dayCompletion,
-          workContent,
-          metadata.workHourTypeCode
-        );
-      }
-    );
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: '正在登记工时到 DevOps',
+          cancellable: false
+        },
+        async () => {
+          await provider.addWorkHour!(
+            taskId,
+            createTime,
+            spendTaskTime,
+            dayCompletion,
+            workContent,
+            metadata.workHourTypeCode
+          );
+        }
+      );
+    } catch (error) {
+      throw new Error(
+        `工时登记失败：${error instanceof Error ? error.message : String(error)}。请确认${taskLabel}编号 "${metadata.task.code}" 是否正确。`
+      );
+    }
   }
+  // @AI-End P5Q6R 20260604 @@cc
 }
 
 function calcSpendTaskTime(metadata: DevOpsCommitMetadata, mode: 'append' | 'overwrite'): number {

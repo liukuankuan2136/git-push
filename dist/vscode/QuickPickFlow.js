@@ -80,34 +80,68 @@ async function collectDevOpsCommitMetadata(provider, cache, config) {
         title: `正在加载 ${taskType} 列表`,
         cancellable: false
     }, () => cache.getTasks(provider, taskType));
+    // @AI-Begin P5Q6R 20260604 @@cc
+    let selectedTask;
     if (tasks.length === 0) {
-        vscode.window.showWarningMessage(`没有未完成的 ${taskType}。`);
-        return undefined;
+        vscode.window.showWarningMessage(`没有未完成的 ${taskType}。你可以手动输入他人的 ${taskType} 编号。`);
     }
-    const grouped = groupByProduct(tasks);
-    const taskPickItems = [];
-    for (const [productName, productTasks] of grouped) {
-        taskPickItems.push({ label: productName, kind: vscode.QuickPickItemKind.Separator });
-        for (const task of productTasks) {
-            taskPickItems.push({
-                label: task.code,
-                description: task.status,
-                detail: `${task.title}${formatTaskReference(task)}`,
-                task
-            });
+    else {
+        const grouped = groupByProduct(tasks);
+        const taskPickItems = [];
+        for (const [productName, productTasks] of grouped) {
+            taskPickItems.push({ label: productName, kind: vscode.QuickPickItemKind.Separator });
+            for (const task of productTasks) {
+                taskPickItems.push({
+                    label: task.code,
+                    description: task.status,
+                    detail: `${task.title}${formatTaskReference(task)}`,
+                    task
+                });
+            }
+        }
+        const taskPick = await vscode.window.showQuickPick(taskPickItems, {
+            title: `选择一个 ${taskType}`,
+            placeHolder: '搜索工作项编号或标题，按 Esc 手动输入编号',
+            ignoreFocusOut: true,
+            matchOnDetail: true
+        });
+        if (taskPick?.task) {
+            selectedTask = taskPick.task;
         }
     }
-    const taskPick = await vscode.window.showQuickPick(taskPickItems, {
-        title: `选择一个 ${taskType}`,
-        placeHolder: '搜索工作项编号或标题',
-        ignoreFocusOut: true,
-        matchOnDetail: true
-    });
-    // @AI-End R2S5T 20260519 @@cc
-    if (!taskPick?.task) {
-        return undefined;
+    if (!selectedTask) {
+        const manualCode = await vscode.window.showInputBox({
+            title: `手动输入 ${taskType} 编号`,
+            placeHolder: '输入完整的任务或缺陷编号',
+            ignoreFocusOut: true,
+            validateInput: (value) => {
+                if (!value.trim()) {
+                    return '请输入编号';
+                }
+                return undefined;
+            }
+        });
+        if (!manualCode) {
+            return undefined;
+        }
+        const trimmedCode = manualCode.trim();
+        // 先在已有列表中查找
+        selectedTask = tasks.find((t) => t.code === trimmedCode);
+        // 如果列表中没有，尝试通过 API 直接按编号查询（不按用户过滤）
+        if (!selectedTask && provider.fetchTaskByCode) {
+            selectedTask = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `正在查询 ${taskType} ${trimmedCode}`,
+                cancellable: false
+            }, () => provider.fetchTaskByCode(trimmedCode, taskType));
+        }
+        if (!selectedTask) {
+            vscode.window.showErrorMessage(`${taskType === 'task' ? '任务' : '缺陷'}编号 "${trimmedCode}" 未找到，请确认编号是否正确。`);
+            return undefined;
+        }
     }
-    const selectedTask = taskPick.task;
+    // @AI-End P5Q6R 20260604 @@cc
+    // @AI-End R2S5T 20260519 @@cc
     // @AI-Begin J7K8L 20260518 @@cc
     let todayWorkHour;
     if (provider.fetchWorkHours) {
