@@ -66,6 +66,10 @@ export interface DevOpsProvider {
   // @AI-Begin T5S4R 20260521 @@cc
   fetchWorkHourTypes?(): Promise<WorkHourType[]>;
   // @AI-End T5S4R 20260521 @@cc
+  // @AI-Begin M7N8K 20260605 @@claudeCode
+  /** 按编号查询单个 task/bug，不做所属人员过滤。未找到返回 null。 */
+  fetchTaskByCode?(code: string, type: DevOpsTaskType): Promise<DevOpsTask | null>;
+  // @AI-End M7N8K 20260605 @@claudeCode
   addWorkHour?(
     taskId: string,
     createTime: string,
