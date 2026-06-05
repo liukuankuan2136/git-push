@@ -87,19 +87,81 @@ export async function collectDevOpsCommitMetadata(
     }
   }
 
-  const taskPick = await vscode.window.showQuickPick(taskPickItems, {
-    title: `选择一个 ${taskType}`,
-    placeHolder: '搜索工作项编号或标题',
-    ignoreFocusOut: true,
-    matchOnDetail: true
-  });
-  // @AI-End R2S5T 20260519 @@cc
+  // @AI-Begin M7N8K 20260605 @@claudeCode
+  const selectedTask = await new Promise<DevOpsTask | undefined>((resolve) => {
+    let resolved = false;
+    const quickPick = vscode.window.createQuickPick<TaskPickItem>();
+    quickPick.title = `选择一个 ${taskType}`;
+    quickPick.placeholder = '搜索工作项编号或标题，或输入编号后回车查询';
+    quickPick.items = taskPickItems;
+    quickPick.matchOnDetail = true;
+    quickPick.ignoreFocusOut = true;
 
-  if (!taskPick?.task) {
+    quickPick.onDidAccept(async () => {
+      const pick = quickPick.selectedItems[0];
+      if (pick?.task) {
+        // 用户从列表中选中了已有的工作项
+        resolved = true;
+        quickPick.hide();
+        resolve(pick.task);
+        return;
+      }
+
+      // 没有选中列表项 — 用户输入了自定义编号
+      const code = quickPick.value.trim();
+      if (!code) {
+        return;
+      }
+
+      // 检查输入是否恰好匹配列表中某一项的编号
+      const matched = taskPickItems.find((item) => item.label === code && item.task);
+      if (matched?.task) {
+        resolved = true;
+        quickPick.hide();
+        resolve(matched.task);
+        return;
+      }
+
+      // 手动查询
+      if (!provider.fetchTaskByCode) {
+        vscode.window.showErrorMessage('当前 DevOps 提供者不支持手动查询编号。');
+        return;
+      }
+
+      quickPick.busy = true;
+      quickPick.placeholder = `正在查询 ${code} ...`;
+      try {
+        const task = await provider.fetchTaskByCode(code, taskType);
+        if (task) {
+          resolved = true;
+          quickPick.hide();
+          resolve(task);
+        } else {
+          quickPick.busy = false;
+          quickPick.placeholder = '搜索工作项编号或标题，或输入编号后回车查询';
+          vscode.window.showErrorMessage(`未找到编号 ${code} 的 ${taskType}。`);
+        }
+      } catch (error) {
+        quickPick.busy = false;
+        quickPick.placeholder = '搜索工作项编号或标题，或输入编号后回车查询';
+        vscode.window.showErrorMessage(`查询失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+
+    quickPick.onDidHide(() => {
+      if (!resolved) {
+        resolve(undefined);
+      }
+      quickPick.dispose();
+    });
+
+    quickPick.show();
+  });
+  // @AI-End M7N8K 20260605 @@claudeCode
+
+  if (!selectedTask) {
     return undefined;
   }
-
-  const selectedTask = taskPick.task;
 
   // @AI-Begin J7K8L 20260518 @@cc
   let todayWorkHour: WorkHourRecord | undefined;

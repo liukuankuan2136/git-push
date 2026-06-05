@@ -52,6 +52,9 @@ export interface CompanyDevOpsAdapterOptions {
   username: string;
   password: string;
   timeoutMs: number;
+  // @AI-Begin M7N8K 20260605 @@claudeCode
+  log?: (message: string) => void;
+  // @AI-End M7N8K 20260605 @@claudeCode
 }
 
 export class CompanyDevOpsAdapter implements DevOpsProvider {
@@ -134,6 +137,132 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
       .filter((task) => task.code && task.title);
   }
   // @AI-End R2S5T 20260519 @@cc
+
+  // @AI-Begin M7N8K 20260605 @@claudeCode
+  async fetchTaskByCode(code: string, type: DevOpsTaskType): Promise<DevOpsTask | null> {
+    const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const configFlag = type === 'task' ? 'Task' : 'Bug';
+
+    // Step 1: 先调 group 列表接口，传入用户输入的编号作为 params
+    const step1Body = {
+      current: '1',
+      size: '50',
+      simpleFieldCondition: {
+        topMenuId: DEVOPS_TOP_MENU_ID,
+        pageId: DEVOPS_PAGE_ID,
+        currentUser: session.userId,
+        currentProductId: 'undefined',
+        configFlag,
+        progressStatus: 'incomplete',
+        taskTypeQueryRule: '0',
+        params: code
+      },
+      groupId: '6'
+    };
+
+    log(`[fetchTaskByCode] Step1 URL: ${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`);
+    log(`[fetchTaskByCode] Step1 body: ${JSON.stringify(step1Body)}`);
+
+    const step1Raw = await fetchJson<unknown>(
+      this.name,
+      `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`,
+      {
+        method: 'POST',
+        timeoutMs: this.options.timeoutMs,
+        headers: {
+          'content-type': 'application/json',
+          cookie: session.cookie,
+          origin: DEVOPS_BASE_URL,
+          'user-context': JSON.stringify({
+            userId: session.userId,
+            pageId: DEVOPS_PAGE_ID
+          })
+        },
+        body: JSON.stringify(step1Body)
+      }
+    );
+
+    log(`[fetchTaskByCode] Step1 raw typeof: ${typeof step1Raw}  isArray: ${Array.isArray(step1Raw)}`);
+    log(`[fetchTaskByCode] Step1 raw (first 3000 chars): ${JSON.stringify(step1Raw).slice(0, 3000)}`);
+
+    // 从 Step1 返回值中找到 executeUser 开头 + 4位数字 + $ 的 groupFieldValue
+    // 例如: executeUser7001$1684128268312203265
+    const step1Arr = Array.isArray(step1Raw) ? step1Raw : (step1Raw as { data?: unknown[] }).data ?? [];
+    log(`[fetchTaskByCode] Step1 arr.length: ${step1Arr.length}`);
+
+    const EXECUTE_USER_RE = /^executeUser\d{4}\$/;
+    let matchedGroupValue = '';
+    for (const item of step1Arr) {
+      const gfv = (item as Record<string, unknown>).groupFieldValue;
+      if (typeof gfv === 'string' && EXECUTE_USER_RE.test(gfv)) {
+        matchedGroupValue = gfv;
+        log(`[fetchTaskByCode] Step1 matched groupFieldValue: ${gfv}`);
+        break;
+      }
+    }
+
+    if (!matchedGroupValue) {
+      log('[fetchTaskByCode] Step1 failed: no groupFieldValue matched executeUser pattern');
+      return null;
+    }
+
+    // Step 2: 用匹配到的 groupFieldValue 查询具体 task/bug
+    const step2Body = {
+      simpleFieldCondition: {
+        topMenuId: DEVOPS_TOP_MENU_ID,
+        pageId: DEVOPS_PAGE_ID,
+        currentUser: session.userId,
+        currentProductId: 'undefined',
+        configFlag,
+        parentId: matchedGroupValue,
+        taskTypeQueryRule: '0',
+        ...(type === 'task' ? { taskNo: code } : { problemNo: code })
+      },
+      groupId: '6',
+      groupField: 'executeUser',
+      groupFieldValue: matchedGroupValue,
+      parentGroupInfos: [],
+      groupTaskCount: 5
+    };
+
+    log(`[fetchTaskByCode] Step2 body: ${JSON.stringify(step2Body)}`);
+
+    const step2Raw = await fetchJson<unknown>(
+      this.name,
+      `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`,
+      {
+        method: 'POST',
+        timeoutMs: this.options.timeoutMs,
+        headers: {
+          'content-type': 'application/json',
+          cookie: session.cookie,
+          origin: DEVOPS_BASE_URL,
+          'user-context': JSON.stringify({
+            userId: session.userId,
+            pageId: DEVOPS_PAGE_ID
+          })
+        },
+        body: JSON.stringify(step2Body)
+      }
+    );
+
+    log(`[fetchTaskByCode] Step2 raw typeof: ${typeof step2Raw}  isArray: ${Array.isArray(step2Raw)}`);
+    if (!Array.isArray(step2Raw)) {
+      log(`[fetchTaskByCode] Step2 raw keys: ${Object.keys(step2Raw as object).join(', ')}`);
+    }
+    log(`[fetchTaskByCode] Step2 raw (first 2000 chars): ${JSON.stringify(step2Raw).slice(0, 2000)}`);
+
+    const arr = Array.isArray(step2Raw) ? step2Raw : (step2Raw as { data?: unknown[] }).data ?? [];
+    log(`[fetchTaskByCode] Step2 arr.length: ${arr.length}`);
+    if (arr.length === 0) {
+      return null;
+    }
+    log(`[fetchTaskByCode] Step2 arr[0] keys: ${Object.keys(arr[0] as object).join(', ')}`);
+    log(`[fetchTaskByCode] Step2 arr[0]: ${JSON.stringify(arr[0]).slice(0, 2000)}`);
+    return this.toTask(arr[0] as Record<string, unknown>, type);
+  }
+  // @AI-End M7N8K 20260605 @@claudeCode
 
   async testConnection(): Promise<boolean> {
     await this.getSession();
