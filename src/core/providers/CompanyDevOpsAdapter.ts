@@ -3,8 +3,8 @@ import { DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, WorkHourReco
 import { fetchJson, parseResponsePayload, readableHttpError } from '../http';
 
 const DEVOPS_BASE_URL = 'https://devops.ctjsoft.com';
-const DEVOPS_PAGE_ID = 'AbY8d4R';
-const DEVOPS_TOP_MENU_ID = 'DevPro';
+const DEVOPS_PAGE_ID = 'h7BdNkJ';
+const DEVOPS_TOP_MENU_ID = 'OA';
 const DEVOPS_GROUP_ID = '1';
 
 interface DevOpsSession {
@@ -91,11 +91,35 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
     return projects;
   }
 
-  // @AI-Begin R2S5T 20260519 @@cc
+  // @AI-Begin K3M8Q 20260606 @@claudeCode
   async fetchTasks(type: DevOpsTaskType): Promise<DevOpsTask[]> {
     const session = await this.getSession();
-    const groupValue = `executeUser7770$${session.userId}`;
-    const raw = await fetchJson<unknown>(
+    const log = this.options.log ?? (() => {});
+    const configFlag = type === 'task' ? 'Task' : 'Bug';
+    const tasktypeId = type === 'task' ? 'asbdbfkwef' : 'uoyDMdta';
+
+    // Step 1: 发现分组 — 获取当前用户的 executeUser groupFieldValue 和 groupTaskCount
+    const step1Body: Record<string, unknown> = {
+      current: '1',
+      size: '50',
+      simpleFieldCondition: {
+        topMenuId: DEVOPS_TOP_MENU_ID,
+        pageId: DEVOPS_PAGE_ID,
+        currentUser: session.userId,
+        currentProductId: 'undefined',
+        configFlag,
+        tasktypeId: [tasktypeId],
+        executeUser: [session.userId],
+        progressStatus: 'incomplete',
+        taskTypeQueryRule: '0'
+      },
+      groupId: '6'
+    };
+
+    log(`[fetchTasks] Step1 URL: ${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`);
+    log(`[fetchTasks] Step1 body: ${JSON.stringify(step1Body)}`);
+
+    const step1Raw = await fetchJson<unknown>(
       this.name,
       `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`,
       {
@@ -110,33 +134,107 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
             pageId: DEVOPS_PAGE_ID
           })
         },
-        body: JSON.stringify({
-          simpleFieldCondition: {
-            topMenuId: DEVOPS_TOP_MENU_ID,
-            pageId: DEVOPS_PAGE_ID,
-            currentUser: session.userId,
-            currentProductId: 'undefined',
-            configFlag: type === 'task' ? 'Task' : 'Bug',
-            parentId: groupValue,
-            taskTypeQueryRule: '0',
-            progressStatus: 'incomplete',
-            executeUser: [session.userId]
-          },
-          groupId: '6',
-          groupField: 'executeUser',
-          groupFieldValue: groupValue,
-          parentGroupInfos: [],
-          groupTaskCount: 5
-        })
+        body: JSON.stringify(step1Body)
       }
     );
 
-    const arr = Array.isArray(raw) ? raw : (raw as { data?: unknown[] }).data ?? [];
-    return arr
+    log(`[fetchTasks] Step1 raw typeof: ${typeof step1Raw}  isArray: ${Array.isArray(step1Raw)}`);
+    log(`[fetchTasks] Step1 raw (first 3000 chars): ${JSON.stringify(step1Raw).slice(0, 3000)}`);
+
+    const step1Arr = Array.isArray(step1Raw) ? step1Raw : (step1Raw as { data?: unknown[] }).data ?? [];
+    log(`[fetchTasks] Step1 arr.length: ${step1Arr.length}`);
+
+    const EXECUTE_USER_RE = /^executeUser\d{4}\$/;
+    let matchedGroupValue = '';
+    let groupTaskCount = 5;
+    for (const item of step1Arr) {
+      const record = item as Record<string, unknown>;
+      const gfv = record.groupFieldValue;
+      if (typeof gfv === 'string' && EXECUTE_USER_RE.test(gfv)) {
+        matchedGroupValue = gfv;
+        log(`[fetchTasks] Step1 matched groupFieldValue: ${gfv}`);
+        if (typeof record.groupTaskCount === 'number') {
+          groupTaskCount = record.groupTaskCount;
+        } else if (typeof record.groupTaskCount === 'string') {
+          const parsed = parseInt(record.groupTaskCount, 10);
+          if (!isNaN(parsed)) {
+            groupTaskCount = parsed;
+          }
+        }
+        log(`[fetchTasks] Step1 groupTaskCount: ${groupTaskCount}`);
+        break;
+      }
+    }
+
+    if (!matchedGroupValue) {
+      log('[fetchTasks] Step1 failed: no groupFieldValue matched executeUser pattern. Step1 items dump:');
+      for (const item of step1Arr) {
+        log(`  item keys: ${Object.keys(item as object).join(', ')}  gfv: ${(item as Record<string, unknown>).groupFieldValue}`);
+      }
+      return [];
+    }
+
+    // Step 2: 用发现的 group 查询实际任务列表
+    const step2Body = {
+      simpleFieldCondition: {
+        topMenuId: DEVOPS_TOP_MENU_ID,
+        pageId: DEVOPS_PAGE_ID,
+        currentUser: session.userId,
+        currentProductId: 'undefined',
+        configFlag,
+        tasktypeId: [tasktypeId],
+        executeUser: [session.userId],
+        parentId: matchedGroupValue,
+        taskTypeQueryRule: '0',
+        progressStatus: 'incomplete'
+      },
+      groupId: '6',
+      groupField: 'executeUser',
+      groupFieldValue: matchedGroupValue,
+      parentGroupInfos: [],
+      groupTaskCount
+    };
+
+    log(`[fetchTasks] Step2 body: ${JSON.stringify(step2Body)}`);
+
+    const step2Raw = await fetchJson<unknown>(
+      this.name,
+      `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`,
+      {
+        method: 'POST',
+        timeoutMs: this.options.timeoutMs,
+        headers: {
+          'content-type': 'application/json',
+          cookie: session.cookie,
+          origin: DEVOPS_BASE_URL,
+          'user-context': JSON.stringify({
+            userId: session.userId,
+            pageId: DEVOPS_PAGE_ID
+          })
+        },
+        body: JSON.stringify(step2Body)
+      }
+    );
+
+    log(`[fetchTasks] Step2 raw typeof: ${typeof step2Raw}  isArray: ${Array.isArray(step2Raw)}`);
+    if (!Array.isArray(step2Raw)) {
+      log(`[fetchTasks] Step2 raw keys: ${Object.keys(step2Raw as object).join(', ')}`);
+    }
+    log(`[fetchTasks] Step2 raw (first 3000 chars): ${JSON.stringify(step2Raw).slice(0, 3000)}`);
+
+    const arr = Array.isArray(step2Raw) ? step2Raw : (step2Raw as { data?: unknown[] }).data ?? [];
+    log(`[fetchTasks] Step2 arr.length: ${arr.length}`);
+    if (arr.length > 0) {
+      log(`[fetchTasks] Step2 arr[0] keys: ${Object.keys(arr[0] as object).join(', ')}`);
+      log(`[fetchTasks] Step2 arr[0]: ${JSON.stringify(arr[0]).slice(0, 2000)}`);
+    }
+    const result = arr
       .map((item) => this.toTask(item as Record<string, unknown>, type))
       .filter((task) => task.code && task.title);
+    log(`[fetchTasks] Final result count: ${result.length}`);
+    return result;
   }
-  // @AI-End R2S5T 20260519 @@cc
+  // @AI-End K3M8Q 20260606 @@claudeCode
 
   // @AI-Begin M7N8K 20260605 @@claudeCode
   async fetchTaskByCode(code: string, type: DevOpsTaskType): Promise<DevOpsTask | null> {

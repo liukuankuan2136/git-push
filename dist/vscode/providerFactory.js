@@ -53,7 +53,7 @@ function createProvider(config) {
         password: config.password,
         timeoutMs: config.requestTimeoutMs,
         // @AI-Begin M7N8K 20260605 @@claudeCode
-        log: (msg) => outputChannel.appendLine(msg)
+        log: config.debugMode ? (msg) => outputChannel.appendLine(msg) : undefined
         // @AI-End M7N8K 20260605 @@claudeCode
     });
 }
