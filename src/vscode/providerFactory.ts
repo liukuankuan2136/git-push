@@ -4,7 +4,7 @@ import { CompanyDevOpsAdapter } from '../core/providers/CompanyDevOpsAdapter';
 import { ExtensionConfig } from './ConfigManager';
 
 // @AI-Begin M7N8K 20260605 @@claudeCode
-const outputChannel = vscode.window.createOutputChannel('Issue Link Push');
+export const outputChannel = vscode.window.createOutputChannel('Issue Link Push');
 // @AI-End M7N8K 20260605 @@claudeCode
 
 export function createProvider(config: ExtensionConfig): DevOpsProvider {

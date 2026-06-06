@@ -7,7 +7,7 @@ import { AmendStrategy, checkBranchState } from './vscode/AmendStrategy';
 import { DevOpsCommitMetadata, DevOpsProvider } from './core/DevOpsProvider';
 import { formatDevOpsCommitMetadata } from './core/DevOpsCommitFormatter';
 import { getGitApi, getCurrentBranchName, hasStagedChanges, listRemotes, pickRepository, Repository } from './vscode/git';
-import { createProvider } from './vscode/providerFactory';
+import { createProvider,outputChannel } from './vscode/providerFactory';
 import { collectDevOpsCommitMetadata } from './vscode/QuickPickFlow';
 
 const execFile = util.promisify(cp.execFile);
@@ -28,9 +28,17 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     // @AI-Begin W3F6G 20260518 @@clearCache
     vscode.commands.registerCommand('issueLinkPush.clearCache', () => {
+      const parts: string[] = [];
       if (cache) {
         cache.clear();
-        vscode.window.showInformationMessage('DevOps 缓存已清除。');
+        parts.push('DevOps 缓存');
+      }
+      // @AI-Begin V5W2X 20260606 @@claudeCode
+      context.globalState.update('issueLinkPush.lastVersion', undefined);
+      parts.push('版本记录');
+      // @AI-End V5W2X 20260606 @@claudeCode
+      if (parts.length > 0) {
+        vscode.window.showInformationMessage(`${parts.join('、')}已清除。`);
       } else {
         vscode.window.showInformationMessage('缓存为空，无需清除。');
       }
@@ -54,6 +62,27 @@ export function activate(context: vscode.ExtensionContext): void {
     })
     // @AI-End B6C7D 20260520 @@cc
   );
+
+  // @AI-Begin V5W2X 20260606 @@claudeCode
+  const currentVersion = context.extension.packageJSON.version as string;
+  const storedVersion = context.globalState.get<string>('issueLinkPush.lastVersion');
+  outputChannel.appendLine(`[versionCheck] currentVersion: ${currentVersion}`);
+  outputChannel.appendLine(`[versionCheck] storedVersion: ${storedVersion ?? '<none>'}`);
+  outputChannel.appendLine(`[versionCheck] isUpgrade: ${currentVersion !== storedVersion}`);
+  if (currentVersion !== storedVersion) {
+    context.globalState.update('issueLinkPush.lastVersion', currentVersion);
+    vscode.window.showInformationMessage(
+      `Issue Link Push 已更新至 v${currentVersion}`,
+      '查看变更'
+    ).then((selection) => {
+      if (selection === '查看变更') {
+        vscode.env.openExternal(vscode.Uri.parse(
+          'https://github.com/liukuankuan2136/git-push/releases'
+        ));
+      }
+    });
+  }
+  // @AI-End V5W2X 20260606 @@claudeCode
 }
 
 export function deactivate(): void { }
