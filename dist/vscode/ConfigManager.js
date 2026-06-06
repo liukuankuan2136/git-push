@@ -50,6 +50,9 @@ class ConfigManager {
             cacheTtlMs: config.get('cacheTtlMs', 300000),
             workHourMode: config.get('workHourMode', 'append'),
             workContentMode: config.get('workContentMode', 'append'),
+            // @AI-Begin L9P2R 20260606 @@claudeCode
+            debugMode: config.get('debugMode', false),
+            // @AI-End L9P2R 20260606 @@claudeCode
             progressMode: config.get('progressMode', 'overwrite'),
             username: await this.secrets.get(ConfigManager.usernameKey),
             password: await this.secrets.get(ConfigManager.passwordKey)

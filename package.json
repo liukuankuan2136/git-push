@@ -138,6 +138,11 @@
           "default": "append",
           "description": "工时描述记录模式。追加：新描述追加到已有描述末尾；覆盖：新描述替换已有描述。"
         },
+        "issueLinkPush.debugMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "运维模式。开启后在 Issue Link Push 输出通道打印请求/响应调试日志。"
+        },
         "issueLinkPush.progressMode": {
           "type": "string",
           "enum": ["append", "overwrite"],

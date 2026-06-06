@@ -6,6 +6,9 @@ export interface ExtensionConfig {
   cacheTtlMs: number;
   workHourMode: 'append' | 'overwrite';
   workContentMode: 'append' | 'overwrite';
+  // @AI-Begin L9P2R 20260606 @@claudeCode
+  debugMode: boolean;
+  // @AI-End L9P2R 20260606 @@claudeCode
   progressMode: 'append' | 'overwrite';
   username?: string;
   password?: string;
@@ -28,6 +31,9 @@ export class ConfigManager {
       cacheTtlMs: config.get<number>('cacheTtlMs', 300000),
       workHourMode: config.get<'append' | 'overwrite'>('workHourMode', 'append'),
       workContentMode: config.get<'append' | 'overwrite'>('workContentMode', 'append'),
+      // @AI-Begin L9P2R 20260606 @@claudeCode
+      debugMode: config.get<boolean>('debugMode', false),
+      // @AI-End L9P2R 20260606 @@claudeCode
       progressMode: config.get<'append' | 'overwrite'>('progressMode', 'overwrite'),
       username: await this.secrets.get(ConfigManager.usernameKey),
       password: await this.secrets.get(ConfigManager.passwordKey)

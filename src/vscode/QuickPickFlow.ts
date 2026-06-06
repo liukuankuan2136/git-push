@@ -91,7 +91,7 @@ export async function collectDevOpsCommitMetadata(
   const selectedTask = await new Promise<DevOpsTask | undefined>((resolve) => {
     let resolved = false;
     const quickPick = vscode.window.createQuickPick<TaskPickItem>();
-    quickPick.title = `选择一个 ${taskType}`;
+    quickPick.title = `输入或选择一个 ${taskType}`;
     quickPick.placeholder = '搜索工作项编号或标题，或输入编号后回车查询';
     quickPick.items = taskPickItems;
     quickPick.matchOnDetail = true;
