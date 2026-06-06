@@ -267,7 +267,7 @@ async function collectDevOpsCommitMetadata(provider, cache, config) {
     // @AI-End J7K8L 20260518 @@cc
     const preview = (0, DevOpsCommitFormatter_1.formatDevOpsCommitMetadata)(config.commitTemplate, metadata);
     // @AI-Begin L5K7J 20260521 @@cc
-    const confirmation = await vscode.window.showInformationMessage(`即将把最新未推送 commit message 修改为：${preview}`, { modal: true }, '确认并推送', '复制');
+    const confirmation = await vscode.window.showInformationMessage(`本次提交命令为：：${preview}`, { modal: true }, '确认并推送', '复制');
     if (confirmation === '复制') {
         await vscode.env.clipboard.writeText(preview);
         vscode.window.showInformationMessage('已复制 commit message 到剪贴板。');
