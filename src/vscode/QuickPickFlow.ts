@@ -363,7 +363,7 @@ function formatHoursReference(task: { estimatedHours?: string; usedHours?: strin
 }
 
 function formatProgressReference(task: { currentProgress?: string }): string {
-  return task.currentProgress ? `当前完成度：${task.currentProgress}%。` : '';
+  return task.currentProgress ? `当前完成度：${task.currentProgress}%` : '';
 }
 
 // @AI-Begin J7K8L 20260518 @@cc
