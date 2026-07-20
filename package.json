@@ -2,7 +2,7 @@
   "name": "issue-link-push",
   "displayName": "Issue Link Push",
   "description": "关联 DevOps 任务并自动生成规范的提交信息且推送代码。",
-   "version": "0.3.7",
+  "version": "0.3.8",
   "publisher": "lkk-vscode-2136",
   "author": {
     "name": "LKK",
@@ -37,6 +37,7 @@
     "onCommand:issueLinkPush.commitOnly",
     "onCommand:issueLinkPush.initializeDevOps",
     "onCommand:issueLinkPush.clearCache",
+    "onCommand:issueLinkPush.opsWorkHourRecord",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
@@ -44,33 +45,39 @@
     "commands": [
       {
         "command": "issueLinkPush.submitWithDevOpsTask",
-        "title": "\u5173\u8054 DevOps \u4efb\u52a1\u5e76\u63a8\u9001",
+        "title": "关联 DevOps 任务并推送",
         "category": "Issue Link Push",
         "icon": "$(checklist)"
       },
       {
         "command": "issueLinkPush.initializeDevOps",
-        "title": "\u521d\u59cb\u5316 DevOps \u8d26\u53f7",
+        "title": "初始化 DevOps 账号",
         "category": "Issue Link Push",
         "icon": "$(account)"
       },
       {
         "command": "issueLinkPush.clearCache",
-        "title": "\u6e05\u9664 DevOps \u7f13\u5b58",
+        "title": "清除 DevOps 缓存",
         "category": "Issue Link Push",
         "icon": "$(clear-all)"
       },
       {
         "command": "issueLinkPush.commitAndPush",
-        "title": "\u5173\u8054 DevOps \u4efb\u52a1\u63d0\u4ea4\u5e76\u63a8\u9001",
+        "title": "关联 DevOps 任务提交并推送",
         "category": "Issue Link Push",
         "icon": "$(git-commit)"
       },
       {
         "command": "issueLinkPush.commitOnly",
-        "title": "\u5173\u8054 DevOps \u4efb\u52a1\u4ec5\u63d0\u4ea4",
+        "title": "关联 DevOps 任务仅提交",
         "category": "Issue Link Push",
         "icon": "$(save)"
+      },
+      {
+        "command": "issueLinkPush.opsWorkHourRecord",
+        "title": "运维工时补录",
+        "category": "Issue Link Push",
+        "icon": "$(debug-start)"
       }
     ],
     "menus": {
@@ -85,6 +92,10 @@
         },
         {
           "command": "issueLinkPush.commitOnly",
+          "group": "navigation"
+        },
+        {
+          "command": "issueLinkPush.opsWorkHourRecord",
           "group": "navigation"
         }
       ],
@@ -103,6 +114,9 @@
         },
         {
           "command": "issueLinkPush.commitOnly"
+        },
+        {
+          "command": "issueLinkPush.opsWorkHourRecord"
         }
       ]
     },
@@ -128,13 +142,19 @@
         },
         "issueLinkPush.workHourMode": {
           "type": "string",
-          "enum": ["append", "overwrite"],
+          "enum": [
+            "append",
+            "overwrite"
+          ],
           "default": "append",
           "description": "工时记录模式。追加：新工时累加到当天已有工时；覆盖：新工时替换当天已有工时。"
         },
         "issueLinkPush.workContentMode": {
           "type": "string",
-          "enum": ["append", "overwrite"],
+          "enum": [
+            "append",
+            "overwrite"
+          ],
           "default": "append",
           "description": "工时描述记录模式。追加：新描述追加到已有描述末尾；覆盖：新描述替换已有描述。"
         },
@@ -145,7 +165,10 @@
         },
         "issueLinkPush.progressMode": {
           "type": "string",
-          "enum": ["append", "overwrite"],
+          "enum": [
+            "append",
+            "overwrite"
+          ],
           "default": "overwrite",
           "description": "任务百分比记录模式。追加：新百分比累加到当天已有百分比（上限 100%）；覆盖：新百分比替换已有百分比。"
         }

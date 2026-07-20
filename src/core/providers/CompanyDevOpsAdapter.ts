@@ -1,9 +1,13 @@
 import { ProviderError } from '../AppError';
-import { DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, WorkHourRecord, WorkHourType } from '../DevOpsProvider';
+import { CreateTaskInput, CreateTaskResult, DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, DevProject, DictValue, ExecuteUser, Module, OpsProject, Product, ProductVersion, Region, WorkHourRecord, WorkHourType } from '../DevOpsProvider';
 import { fetchJson, parseResponsePayload, readableHttpError } from '../http';
 
 const DEVOPS_BASE_URL = 'https://devops.ctjsoft.com';
 const DEVOPS_PAGE_ID = 'h7BdNkJ';
+// @AI-Begin C6D9E 20260720 @@claudeCode
+const DEVOPS_DEV_TASK_PAGE_ID = 'AbY8d4R';
+const DEVOPS_DEV_TASK_TOP_MENU_ID = 'DevPro';
+// @AI-End C6D9E 20260720 @@claudeCode
 const DEVOPS_TOP_MENU_ID = 'OA';
 const DEVOPS_GROUP_ID = '1';
 
@@ -376,8 +380,11 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
     taskWorkhourType: string
   ): Promise<void> {
     const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const payload = { createTime, taskWorkhourType, spendTaskTime, dayCompletion, workContent, taskId, createUser: session.userId };
+    log(`[addWorkHour] payload: ${JSON.stringify(payload)}`);
 
-    await fetchJson<unknown>(
+    const response = await fetchJson<{ status_code?: string; reason?: string }>(
       this.name,
       `${DEVOPS_BASE_URL}/devops-server/config/v3/task/add/addWorkHour`,
       {
@@ -392,17 +399,15 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
             pageId: DEVOPS_PAGE_ID
           })
         },
-        body: JSON.stringify({
-          createTime,
-          taskWorkhourType: taskWorkhourType,
-          spendTaskTime,
-          dayCompletion,
-          workContent,
-          taskId,
-          createUser: session.userId
-        })
+        body: JSON.stringify(payload)
       }
     );
+
+    log(`[addWorkHour] response: ${JSON.stringify(response)}`);
+
+    if (response.status_code !== '0000') {
+      throw new ProviderError(response.reason ?? '登记工时失败', undefined, this.name);
+    }
   }
 
   // @AI-Begin D3E4F 20260518 @@cc
@@ -459,7 +464,7 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
   ): Promise<void> {
     const session = await this.getSession();
 
-    await fetchJson<unknown>(
+    const response = await fetchJson<{ status_code?: string; reason?: string }>(
       this.name,
       `${DEVOPS_BASE_URL}/devops-server/config/v3/task/modify/modifyWorkHour`,
       {
@@ -486,8 +491,260 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
         })
       }
     );
+
+    if (response.status_code !== '0000') {
+      throw new ProviderError(response.reason ?? '修改工时失败', undefined, this.name);
+    }
   }
   // @AI-End G5H6I 20260518 @@cc
+
+  // @AI-Begin C6D9E 20260720 @@claudeCode
+  async getUserId(): Promise<string> {
+    const session = await this.getSession();
+    return session.userId;
+  }
+
+  async createTask(input: CreateTaskInput): Promise<CreateTaskResult> {
+    const session = await this.getSession();
+    const today = new Date().toISOString().split('T')[0];
+
+    const payload: Record<string, unknown> = {
+      workSource: input.workSource,
+      taskWorkItemCatalog: '3',
+      importance: input.importance,
+      priority: input.priority,
+      ecDate: input.ecDate || today,
+      devprojId: input.devprojId,
+      prodId: input.prodId,
+      regionId: input.regionId,
+      opsprojId: input.opsprojId,
+      executeUser: input.executeUser,
+      planStartTime: input.planStartTime || today,
+      planEndTime: input.planEndTime || today,
+      planTaskTime: input.planTaskTime,
+      executeTaskTime: '0',
+      presenter: session.userId,
+      projectId: DEVOPS_DEV_TASK_TOP_MENU_ID,
+      bugLevel: '1',
+      tasktypeId: 'asbdbfkwef',
+      planDetailIds: [],
+      isChildrenWork: false,
+      taskName: input.taskName,
+      taskRemark: input.taskRemark ?? '',
+      tasktypeCode: 'Task',
+      tasktypeName: '任务',
+      attachIdList: [],
+      taskRemarkIsChange: true,
+      createUser: session.userId,
+      updateUser: session.userId,
+      topMenuId: DEVOPS_DEV_TASK_TOP_MENU_ID,
+      taskAttachIds: []
+    };
+
+    const log = this.options.log ?? (() => {});
+
+    // moduleId / prodVersionId：未指定时自动查询默认值
+    payload.moduleId = input.moduleId || '';
+    if (input.prodVersionId) {
+      payload.prodVersionId = input.prodVersionId;
+    } else {
+      try {
+        const versions = await this.fetchProductVersions(input.prodId);
+        const defaultVersion = versions[0];
+        payload.prodVersionId = defaultVersion?.id ?? '';
+        log(`[createTask] auto-resolved prodVersionId: ${payload.prodVersionId} (from ${versions.length} versions)`);
+      } catch {
+        payload.prodVersionId = '';
+        log('[createTask] failed to auto-resolve prodVersionId');
+      }
+    }
+
+    const url = `${DEVOPS_BASE_URL}/devops-server/config/v3/task/add/task`;
+    log(`[createTask] URL: ${url}`);
+    log(`[createTask] payload: ${JSON.stringify(payload)}`);
+
+    const response = await fetchJson<{ status_code?: string; reason?: string; data?: Record<string, unknown> }>(
+      this.name,
+      url,
+      {
+        method: 'POST',
+        timeoutMs: this.options.timeoutMs,
+        headers: {
+          'content-type': 'application/json',
+          cookie: session.cookie,
+          origin: DEVOPS_BASE_URL,
+          'user-context': JSON.stringify({
+            userId: session.userId,
+            pageId: DEVOPS_DEV_TASK_PAGE_ID
+          })
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    log(`[createTask] response: ${JSON.stringify(response)}`);
+
+    if (response.status_code !== '0000') {
+      throw new ProviderError(
+        response.reason ?? '创建任务失败',
+        undefined,
+        this.name
+      );
+    }
+
+    // response.data is an array like [{taskId, taskNo, ...}], grab the first element
+    const rawData = response.data;
+    const data: Record<string, unknown> = (Array.isArray(rawData) && rawData.length > 0)
+      ? (rawData[0] as Record<string, unknown>)
+      : (!Array.isArray(rawData) ? (rawData as Record<string, unknown> ?? {}) : {});
+    const code = String(data.taskNo ?? data.code ?? '');
+    return {
+      code,
+      title: input.taskName,
+      id: String(data.taskId ?? data.id ?? code),
+      url: data.url as string | undefined
+    };
+  }
+
+  async fetchDevProjects(): Promise<DevProject[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/commonQuery/query/devPro/list`);
+    url.searchParams.set('appId', DEVOPS_DEV_TASK_TOP_MENU_ID);
+    url.searchParams.set('pageId', DEVOPS_DEV_TASK_PAGE_ID);
+    url.searchParams.set('userId', session.userId);
+
+    const response = await fetchJson<{ status_code?: string; data?: DevProject[] }>(this.name, url.toString(), {
+      timeoutMs: this.options.timeoutMs,
+      headers: this.devTaskUserContextHeaders(session)
+    });
+    return (response.data ?? []).filter((p) => p.devprojId && p.devprojCname);
+  }
+
+  async fetchProductsByProject(devprojId: string): Promise<Product[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/commonQuery/query/product/list`);
+    url.searchParams.set('appId', DEVOPS_DEV_TASK_TOP_MENU_ID);
+    url.searchParams.set('proId', devprojId);
+    url.searchParams.set('pageId', DEVOPS_DEV_TASK_PAGE_ID);
+    url.searchParams.set('userId', session.userId);
+
+    const response = await fetchJson<{ status_code?: string; data?: Product[] }>(this.name, url.toString(), {
+      timeoutMs: this.options.timeoutMs,
+      headers: this.devTaskUserContextHeaders(session)
+    });
+    return (response.data ?? []).filter((p) => p.prodId && p.prodCname);
+  }
+
+  async fetchRegions(): Promise<Region[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/commonQuery/query/region/list`);
+    url.searchParams.set('appId', DEVOPS_DEV_TASK_TOP_MENU_ID);
+    url.searchParams.set('pageId', DEVOPS_DEV_TASK_PAGE_ID);
+    url.searchParams.set('userId', session.userId);
+
+    const response = await fetchJson<{ status_code?: string; data?: Region[] }>(this.name, url.toString(), {
+      timeoutMs: this.options.timeoutMs,
+      headers: this.devTaskUserContextHeaders(session)
+    });
+    return (response.data ?? []).filter((r) => r.regionId && r.regionName);
+  }
+
+  async fetchOpsProjectsByRegion(regionId: string): Promise<OpsProject[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/commonQuery/query/opsProByRegion/list`);
+    url.searchParams.set('appId', DEVOPS_DEV_TASK_TOP_MENU_ID);
+
+    const response = await fetchJson<{ status_code?: string; data?: OpsProject[] }>(this.name, url.toString(), {
+      method: 'POST',
+      timeoutMs: this.options.timeoutMs,
+      headers: {
+        'content-type': 'application/json',
+        cookie: session.cookie,
+        origin: DEVOPS_BASE_URL,
+        'user-context': JSON.stringify({
+          userId: session.userId,
+          pageId: DEVOPS_DEV_TASK_PAGE_ID
+        })
+      },
+      body: JSON.stringify([regionId])
+    });
+    return (response.data ?? []).filter((o) => o.opsprojId && o.opsprojCname);
+  }
+
+  async fetchExecuteUsers(productId?: string): Promise<ExecuteUser[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/executeUser/list`);
+    url.searchParams.set('type', DEVOPS_DEV_TASK_TOP_MENU_ID);
+    url.searchParams.set('taskProductId', '');
+    url.searchParams.set('productId', productId ?? '');
+
+    const response = await fetchJson<{ status_code?: string; data?: ExecuteUser[] }>(this.name, url.toString(), {
+      timeoutMs: this.options.timeoutMs,
+      headers: this.devTaskUserContextHeaders(session)
+    });
+    return (response.data ?? []).filter((u) => u.id && u.name);
+  }
+
+  async fetchProductVersions(productId: string): Promise<ProductVersion[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/proVersion/list`);
+    url.searchParams.set('productId', productId);
+
+    const response = await fetchJson<{ status_code?: string; data?: ProductVersion[] }>(this.name, url.toString(), {
+      timeoutMs: this.options.timeoutMs,
+      headers: this.devTaskUserContextHeaders(session)
+    });
+    return (response.data ?? []).filter((v) => v.id && v.name);
+  }
+
+  async fetchModules(productId: string): Promise<Module[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/moduleList`);
+    url.searchParams.set('prodId', productId);
+
+    const response = await fetchJson<{ status_code?: string; data?: Module[] }>(this.name, url.toString(), {
+      method: 'POST',
+      timeoutMs: this.options.timeoutMs,
+      headers: {
+        'content-type': 'application/json',
+        cookie: session.cookie,
+        origin: DEVOPS_BASE_URL,
+        'user-context': JSON.stringify({
+          userId: session.userId,
+          pageId: DEVOPS_DEV_TASK_PAGE_ID
+        })
+      },
+      body: JSON.stringify({})
+    });
+    return (response.data ?? []).filter((m) => m.moduleId && m.moduleName);
+  }
+
+  async fetchDictValues(catalogCode: string): Promise<DictValue[]> {
+    const session = await this.getSession();
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/run/dictValue/query/queryDictValueByCode`);
+    url.searchParams.set('eleCatalogCode', catalogCode);
+
+    const response = await fetchJson<{ status_code?: string; data?: DictValue[] }>(
+      this.name,
+      url.toString(),
+      {
+        timeoutMs: this.options.timeoutMs,
+        headers: this.devTaskUserContextHeaders(session)
+      }
+    );
+    return (response.data ?? []).filter((d) => d.eleCode && d.eleName);
+  }
+
+  private devTaskUserContextHeaders(session: DevOpsSession): Record<string, string> {
+    return {
+      cookie: session.cookie,
+      'user-context': JSON.stringify({
+        userId: session.userId,
+        pageId: DEVOPS_DEV_TASK_PAGE_ID
+      })
+    };
+  }
+  // @AI-End C6D9E 20260720 @@claudeCode
 
   private async getSession(): Promise<DevOpsSession> {
     if (this.session) {

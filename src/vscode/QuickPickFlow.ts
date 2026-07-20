@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { DevOpsCache } from '../core/DevOpsCache';
 import { formatDevOpsCommitMetadata } from '../core/DevOpsCommitFormatter';
-import { DevOpsCommitMetadata, DevOpsProvider, DevOpsTask, DevOpsTaskType, WorkHourRecord, WorkHourType } from '../core/DevOpsProvider';
+import { CreateTaskInput, DevProject, DevOpsCommitMetadata, DevOpsProvider, DevOpsTask, DevOpsTaskType, DictValue, Region, WorkHourRecord, WorkHourType } from '../core/DevOpsProvider';
 import { ExtensionConfig } from './ConfigManager';
+import { RepoProductMapping } from './RepoProductMapping';
 
 const WORK_HOUR_MODE_HINT: Record<string, string> = {
   append: '[累加模式]',
@@ -379,6 +380,363 @@ function buildSubjectPrompt(config: ExtensionConfig, todayWorkHour?: WorkHourRec
   return `${base}\n\n今日描述：\n${todayWorkHour.workContent}\n`;
 }
 // @AI-End J7K8L 20260518 @@cc
+
+// @AI-Begin C6D9E 20260720 @@claudeCode
+
+export interface OpsWorkHourInput {
+  taskInput: CreateTaskInput;
+  commitType: string;
+  hours: string;
+  progress: string;
+  workHourTypeCode: string;
+  workHourTypeName: string;
+  devprojName: string;
+  prodName: string;
+}
+
+export async function collectOpsWorkHourRecord(
+  provider: DevOpsProvider,
+  cache: DevOpsCache,
+  originUrl: string,
+  existingMapping: RepoProductMapping | undefined
+): Promise<OpsWorkHourInput | undefined> {
+  const today = new Date().toISOString().split('T')[0];
+
+  // ── Step 1: 输入任务标题 ──
+  const taskName = await vscode.window.showInputBox({
+    title: '运维工时补录 — 任务标题',
+    prompt: '请输入任务标题（必填），建议包含地区名称以便自动匹配区域',
+    placeHolder: '例如：安徽数据共享池需求评估',
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      if (!value.trim()) { return '请输入任务标题。'; }
+      if (value.trim().length < 3) { return '标题不能少于 3 个字。'; }
+      if (value.trim().length > 200) { return '标题不能超过 200 个字。'; }
+      return undefined;
+    }
+  });
+  if (!taskName) { return undefined; }
+
+  // ── Step 2: 研发项目 + 所属产品 ──
+  let devprojId: string;
+  let devprojName: string;
+  let prodId: string;
+  let prodName: string;
+
+  if (existingMapping) {
+    // 已有映射：自动填入，让用户确认
+    const useMapped = await vscode.window.showQuickPick(
+      [
+        { label: `是，使用已关联项目`, description: `${existingMapping.devprojName} / ${existingMapping.prodName}`, value: true as const },
+        { label: '否，重新选择', description: '手动选择研发项目和产品', value: false as const }
+      ],
+      { title: `当前仓库已关联: ${existingMapping.devprojName} → ${existingMapping.prodName}`, ignoreFocusOut: true }
+    );
+    if (!useMapped) { return undefined; }
+    if (useMapped.value) {
+      devprojId = existingMapping.devprojId;
+      devprojName = existingMapping.devprojName;
+      prodId = existingMapping.prodId;
+      prodName = existingMapping.prodName;
+    } else {
+      const picked = await pickDevProjectAndProduct(provider, cache);
+      if (!picked) { return undefined; }
+      devprojId = picked.devprojId;
+      devprojName = picked.devprojName;
+      prodId = picked.prodId;
+      prodName = picked.prodName;
+    }
+  } else {
+    const picked = await pickDevProjectAndProduct(provider, cache);
+    if (!picked) { return undefined; }
+    devprojId = picked.devprojId;
+    devprojName = picked.devprojName;
+    prodId = picked.prodId;
+    prodName = picked.prodName;
+  }
+
+  // ── Step 2.5: 产品版本（级联产品）──
+  let prodVersionId: string | undefined;
+  try {
+    const versions = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在加载产品版本', cancellable: false },
+      () => provider.fetchProductVersions!(prodId)
+    );
+    if (versions.length === 1) {
+      prodVersionId = versions[0].id;
+    } else if (versions.length > 1) {
+      const verPick = await vscode.window.showQuickPick(
+        versions.map((v) => ({ label: v.name, description: v.id, value: v.id })),
+        { title: '选择产品版本', ignoreFocusOut: true }
+      );
+      if (!verPick) { return undefined; }
+      prodVersionId = verPick.value;
+    }
+  } catch { /* 版本查询失败不阻塞流程 */ }
+
+  // ── Step 3: 区域（从标题模糊匹配）──
+  const regions = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: '正在加载区域列表', cancellable: false },
+    () => cache.getRegions(provider)
+  );
+
+  let regionId: string;
+  const matchedRegion = matchRegionFromTitle(taskName, regions);
+
+  if (matchedRegion) {
+    const confirm = await vscode.window.showQuickPick(
+      [
+        { label: `是，使用 "${matchedRegion.regionName}"`, value: true as const },
+        { label: '否，手动选择区域', value: false as const }
+      ],
+      { title: `任务标题自动匹配区域: ${matchedRegion.regionName}`, ignoreFocusOut: true }
+    );
+    if (!confirm) { return undefined; }
+    if (confirm.value) {
+      regionId = matchedRegion.regionId;
+    } else {
+      const picked = await pickRegion(regions);
+      if (!picked) { return undefined; }
+      regionId = picked;
+    }
+  } else {
+    const picked = await pickRegion(regions);
+    if (!picked) { return undefined; }
+    regionId = picked;
+  }
+
+  // ── Step 4: 实施项目（级联区域）──
+  const opsProjects = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: '正在加载实施项目', cancellable: false },
+    () => provider.fetchOpsProjectsByRegion!(regionId)
+  );
+  let opsprojId = '';
+  if (opsProjects.length === 1) {
+    opsprojId = opsProjects[0].opsprojId;
+  } else if (opsProjects.length > 1) {
+    const opsPick = await vscode.window.showQuickPick(
+      opsProjects.map((o) => ({ label: o.opsprojCname, description: o.opsprojId, value: o.opsprojId })),
+      { title: '选择实施项目', ignoreFocusOut: true }
+    );
+    if (!opsPick) { return undefined; }
+    opsprojId = opsPick.value;
+  } else {
+    vscode.window.showWarningMessage('该区域下没有关联的实施项目，任务将不会关联实施项目。');
+  }
+
+  // ── Step 5: 输入运维工时 ──
+  const hours = await vscode.window.showInputBox({
+    title: '运维工时补录 — 投入工时',
+    prompt: '本次运维工作投入的工时（小时）',
+    placeHolder: '例如：4 或 1.5',
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      const n = Number(value);
+      if (!value.trim()) { return '请输入工时。'; }
+      if (!Number.isFinite(n) || n <= 0) { return '工时必须大于 0。'; }
+      return undefined;
+    }
+  });
+  if (!hours) { return undefined; }
+
+  // ── Step 6: 选择工时类型（复用已有）──
+  let workHourTypeCode = '24';
+  let workHourTypeName = '';
+  if (provider.fetchWorkHourTypes) {
+    const types = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在加载工时类型', cancellable: false },
+      () => cache.getWorkHourTypes(provider)
+    );
+    if (types.length > 0) {
+      const typePick = await vscode.window.showQuickPick(
+        types.map((t) => ({ label: t.eleName, code: t.eleCode })),
+        { title: '选择工时类型', ignoreFocusOut: true }
+      );
+      if (!typePick) { return undefined; }
+      workHourTypeCode = typePick.code;
+      workHourTypeName = typePick.label;
+    }
+  }
+
+  // ── Step 7: 输入完成度 ──
+  const progress = await vscode.window.showInputBox({
+    title: '运维工时补录 — 任务完成度',
+    prompt: '百分比 (0-100)，默认 100%',
+    value: '100',
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 0 || n > 100) { return '必须是 0~100 的整数。'; }
+      return undefined;
+    }
+  });
+  if (!progress) { return undefined; }
+
+  // ── Step 8: 选择 commit type ──
+  const COMMIT_TYPES = [
+    { label: 'feat', description: '增加新功能' },
+    { label: 'fix', description: '修复 bug' },
+    { label: 'upd', description: '已有内容更新或修改' },
+    { label: 'perf', description: '性能或体验优化' },
+    { label: 'refactor', description: '代码重构' },
+    { label: 'chore', description: '日常维护或杂务处理' },
+    { label: 'doc', description: '文档改动' },
+    { label: 'test', description: '增加或调整测试' },
+    { label: 'style', description: '格式、空格、缩进等不影响含义的改动' },
+    { label: 'build', description: '构建、发布、依赖调整' },
+    { label: 'Merge', description: '合并操作' }
+  ];
+  const commitTypePick = await vscode.window.showQuickPick(COMMIT_TYPES, {
+    title: '选择 commit type',
+    placeHolder: '运维工时常选 upd',
+    ignoreFocusOut: true
+  });
+  if (!commitTypePick) { return undefined; }
+
+  // ── Step 9: 运维描述 ──
+  const opsDescription = await vscode.window.showInputBox({
+    title: '运维工时补录 — 运维描述',
+    prompt: '请描述本次运维工作的具体内容（必填，最少 20 字）',
+    placeHolder: '例如：配合安徽医保项目需求，修改了数据同步脚本，调整了查询接口参数...',
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      const trimmed = value.trim();
+      if (!trimmed) { return '请输入运维描述。'; }
+      if (trimmed.length < 20) { return `至少需要 20 个字，当前 ${trimmed.length} 字。`; }
+      if (trimmed.length > 1000) { return '不能超过 1000 个字。'; }
+      return undefined;
+    }
+  });
+  if (!opsDescription) { return undefined; }
+
+  const taskRemark = opsDescription.trim()
+    ? `<p>${opsDescription.trim()}</p>`
+    : '';
+
+  // ── 构建输入 ──
+  const taskInput: CreateTaskInput = {
+    taskName: taskName.trim(),
+    devprojId,
+    prodId,
+    regionId,
+    opsprojId,
+    executeUser: await provider.getUserId!(),
+    importance: '2',
+    priority: '2',
+    workSource: '3',
+    planTaskTime: Number(hours),
+    planStartTime: today,
+    planEndTime: today,
+    ecDate: today,
+    taskRemark,
+    prodVersionId
+  };
+
+  // ── 确认页 ──
+  const regionName = regions.find((r) => r.regionId === regionId)?.regionName ?? regionId;
+  const opsName = opsProjects.find((o) => o.opsprojId === opsprojId)?.opsprojCname ?? '';
+  const summary = [
+    `任务标题: ${taskInput.taskName}`,
+    `研发项目: ${devprojName}`,
+    `所属产品: ${prodName}`,
+    `区域: ${regionName}${matchedRegion ? ' (自动匹配)' : ''}`,
+    opsprojId ? `实施项目: ${opsName}` : '',
+    `处理人: 当前用户 (auto)`,
+    `优先级: 中 (default) / 工作来源: 常规需求 (default)`,
+    `投入工时: ${taskInput.planTaskTime}h / 完成度: ${progress}%`,
+    `Commit: ${commitTypePick.label}:${taskInput.taskName}`,
+    `日期: ${today} (default)`,
+    taskRemark ? `\n运维描述:\n${opsDescription.trim().substring(0, 200)}${opsDescription.trim().length > 200 ? '...' : ''}` : ''
+  ].filter(Boolean).join('\n');
+
+  const confirmation = await vscode.window.showInformationMessage(
+    `确认创建运维任务并提交？\n\n${summary}`,
+    { modal: true },
+    '确认创建并提交'
+  );
+
+  if (confirmation !== '确认创建并提交') { return undefined; }
+
+  return {
+    taskInput,
+    commitType: commitTypePick.label,
+    hours: normalizeNumber(hours),
+    progress: normalizeNumber(progress),
+    workHourTypeCode,
+    workHourTypeName,
+    devprojName,
+    prodName
+  };
+}
+
+// ── 辅助函数 ──
+
+/** 从标题模糊匹配区域，按名称长度降序匹配 */
+function matchRegionFromTitle(title: string, regions: Region[]): Region | undefined {
+  const sorted = [...regions]
+    .filter((r) => r.regionName && r.regionName.length > 1)
+    .sort((a, b) => b.regionName.length - a.regionName.length);
+  for (const r of sorted) {
+    if (title.includes(r.regionName)) { return r; }
+  }
+  return undefined;
+}
+
+/** 弹出区域选择框 */
+async function pickRegion(regions: Region[]): Promise<string | undefined> {
+  if (regions.length === 0) {
+    vscode.window.showWarningMessage('没有可用的区域。');
+    return undefined;
+  }
+  const pick = await vscode.window.showQuickPick(
+    regions.map((r) => ({ label: r.regionName, description: r.regionId, value: r.regionId })),
+    { title: '选择区域', ignoreFocusOut: true }
+  );
+  return pick?.value;
+}
+
+/** 选择研发项目 → 级联选择产品 */
+async function pickDevProjectAndProduct(
+  provider: DevOpsProvider,
+  cache: DevOpsCache
+): Promise<{ devprojId: string; devprojName: string; prodId: string; prodName: string } | undefined> {
+  const devProjects = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: '正在加载研发项目', cancellable: false },
+    () => cache.getDevProjects(provider)
+  );
+  if (devProjects.length === 0) {
+    vscode.window.showWarningMessage('没有可用的研发项目。');
+    return undefined;
+  }
+  const devPick = await vscode.window.showQuickPick(
+    devProjects.map((p) => ({ label: p.devprojCname, description: p.devprojId, value: p.devprojId })),
+    { title: '选择研发项目', ignoreFocusOut: true }
+  );
+  if (!devPick) { return undefined; }
+
+  const products = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: '正在加载产品列表', cancellable: false },
+    () => provider.fetchProductsByProject!(devPick.value)
+  );
+  if (products.length === 0) {
+    vscode.window.showWarningMessage('该研发项目下没有可用的产品。');
+    return undefined;
+  }
+  const prodPick = await vscode.window.showQuickPick(
+    products.map((p) => ({ label: p.prodCname, description: p.prodId, value: p.prodId })),
+    { title: '选择所属产品', ignoreFocusOut: true }
+  );
+  if (!prodPick) { return undefined; }
+
+  return {
+    devprojId: devPick.value,
+    devprojName: devPick.label,
+    prodId: prodPick.value,
+    prodName: prodPick.label
+  };
+}
+
+// @AI-End C6D9E 20260720 @@claudeCode
 
 // @AI-Begin R2S5T 20260519 @@cc
 function groupByProduct(tasks: DevOpsTask[]): Map<string, DevOpsTask[]> {

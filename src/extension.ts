@@ -8,7 +8,8 @@ import { DevOpsCommitMetadata, DevOpsProvider } from './core/DevOpsProvider';
 import { formatDevOpsCommitMetadata } from './core/DevOpsCommitFormatter';
 import { getGitApi, getCurrentBranchName, hasStagedChanges, listRemotes, pickRepository, Repository } from './vscode/git';
 import { createProvider,outputChannel } from './vscode/providerFactory';
-import { collectDevOpsCommitMetadata } from './vscode/QuickPickFlow';
+import { collectDevOpsCommitMetadata, collectOpsWorkHourRecord, OpsWorkHourInput } from './vscode/QuickPickFlow';
+import { RepoProductMappingStore } from './vscode/RepoProductMapping';
 
 const execFile = util.promisify(cp.execFile);
 
@@ -37,6 +38,11 @@ export function activate(context: vscode.ExtensionContext): void {
       context.globalState.update('issueLinkPush.lastVersion', undefined);
       parts.push('版本记录');
       // @AI-End V5W2X 20260606 @@claudeCode
+      // @AI-Begin C6D9E 20260720 @@claudeCode
+      const repoMappingStore = new RepoProductMappingStore(context.globalState);
+      repoMappingStore.clear();
+      parts.push('仓库映射');
+      // @AI-End C6D9E 20260720 @@claudeCode
       if (parts.length > 0) {
         vscode.window.showInformationMessage(`${parts.join('、')}已清除。`);
       } else {
@@ -59,8 +65,15 @@ export function activate(context: vscode.ExtensionContext): void {
       const config = await configManager.load();
       cache ??= new DevOpsCache(config.cacheTtlMs);
       await runCommitOnly(config, cache);
-    })
+    }),
     // @AI-End B6C7D 20260520 @@cc
+    // @AI-Begin C6D9E 20260720 @@claudeCode
+    vscode.commands.registerCommand('issueLinkPush.opsWorkHourRecord', async () => {
+      const config = await configManager.load();
+      cache ??= new DevOpsCache(config.cacheTtlMs);
+      await runOpsWorkHourRecord(config, cache, context);
+    })
+    // @AI-End C6D9E 20260720 @@claudeCode
   );
 
   // @AI-Begin V5W2X 20260606 @@claudeCode
@@ -84,6 +97,188 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   // @AI-End V5W2X 20260606 @@claudeCode
 }
+
+// @AI-Begin C6D9E 20260720 @@claudeCode
+async function runOpsWorkHourRecord(
+  config: ExtensionConfig,
+  cache: DevOpsCache,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  try {
+    // 检查 git
+    const git = await getGitApi();
+    const repository = await pickRepository(git);
+    if (!repository) {
+      vscode.window.showWarningMessage('当前没有打开 Git 仓库。');
+      return;
+    }
+    const cwd = repository.rootUri.fsPath;
+
+    if (!(await hasStagedChanges(cwd))) {
+      vscode.window.showWarningMessage('当前没有已暂存的改动。请先 git add 暂存要提交的文件。');
+      return;
+    }
+
+    const pushTarget = await resolvePushTarget(cwd, repository, false);
+    if (!pushTarget) { return; }
+
+    // 获取 origin URL 用于仓库映射
+    const originUrl = await getOriginUrl(cwd);
+
+    // 创建 provider
+    const provider = createProvider(config);
+    if (!provider.createTask || !provider.fetchDevProjects || !provider.fetchRegions
+        || !provider.fetchProductsByProject || !provider.fetchOpsProjectsByRegion
+        || !provider.getUserId || !provider.addWorkHour) {
+      vscode.window.showErrorMessage('当前 DevOps 提供者不支持运维工时补录所需的功能。');
+      return;
+    }
+
+    // 获取 userId（从 session 中）
+    await provider.testConnection();
+
+    // 仓库映射
+    const repoMappingStore = new RepoProductMappingStore(context.globalState);
+    const existingMapping = originUrl ? repoMappingStore.get(originUrl) : undefined;
+
+    // 收集输入
+    const collected = await collectOpsWorkHourRecord(
+      provider, cache,
+      originUrl ?? '',
+      existingMapping
+    );
+    if (!collected) { return; }
+
+    // 保存仓库映射
+    if (originUrl && !existingMapping) {
+      repoMappingStore.set({
+        originUrl,
+        devprojId: collected.taskInput.devprojId,
+        devprojName: collected.devprojName,
+        prodId: collected.taskInput.prodId,
+        prodName: collected.prodName
+      });
+    }
+
+    // 创建任务
+    const taskResult = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在创建 DevOps 任务', cancellable: false },
+      async () => provider.createTask!(collected.taskInput)
+    );
+    outputChannel.appendLine(`[opsWorkHourRecord] task created: code=${taskResult.code}, id=${taskResult.id}`);
+
+    // 构建 commit message（使用 commitTemplate，SUBJECT 用任务标题）
+    const metadata: DevOpsCommitMetadata = {
+      project: { code: collected.taskInput.prodId, name: collected.taskInput.prodId },
+      task: {
+        code: taskResult.code,
+        title: taskResult.title,
+        type: 'task',
+        status: '新增',
+        projectCode: collected.taskInput.prodId,
+        id: taskResult.id,
+        url: taskResult.url
+      },
+      commitType: collected.commitType,
+      subject: collected.taskInput.taskName,
+      hours: collected.hours,
+      progress: collected.progress,
+      workHourTypeCode: collected.workHourTypeCode,
+      workHourTypeName: collected.workHourTypeName
+    };
+
+    const message = formatDevOpsCommitMetadata(config.commitTemplate, metadata);
+    outputChannel.appendLine(`[opsWorkHourRecord] commit message: ${message}`);
+
+    // commit
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在提交代码', cancellable: false },
+      async () => { await execFile('git', ['commit', '-m', message], { cwd }); }
+    );
+
+    // push（失败不阻塞工时登记）
+    let pushFailed = false;
+    try {
+      await doPush(repository, pushTarget);
+    } catch (pushError) {
+      pushFailed = true;
+      outputChannel.appendLine(`[opsWorkHourRecord] push failed: ${pushError instanceof Error ? pushError.message : String(pushError)}`);
+      vscode.window.showWarningMessage('代码推送失败，请手动推送。工时将继续登记。');
+    }
+
+    // 登记工时：日期当天、类型默认"代码编写"、工时=预计工时×完成度(保留1位小数)
+    outputChannel.appendLine('[opsWorkHourRecord] recording work hours...');
+    const today = new Date().toISOString().split('T')[0];
+    const calcHours = Math.round(collected.taskInput.planTaskTime * (Number(collected.progress) / 100) * 10) / 10;
+
+    if (calcHours <= 0) {
+      outputChannel.appendLine(`[opsWorkHourRecord] calculated hours is ${calcHours}, skipping work hour registration`);
+      vscode.window.showWarningMessage(`工时登记已跳过：当前完成度 ${collected.progress}% 下计算工时为 0。`);
+    } else {
+      const codeWritingType = await findCodeWritingType(provider, cache);
+      const workContent = collected.taskInput.taskRemark
+        ? collected.taskInput.taskRemark.replace(/<[^>]*>/g, '')
+        : collected.taskInput.taskName;
+
+      try {
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: '正在登记工时到 DevOps', cancellable: false },
+          async () => {
+            await provider.addWorkHour!(
+              taskResult.id,
+              today,
+              calcHours,
+              `${collected.progress}%`,
+              workContent,
+              codeWritingType
+            );
+          }
+        );
+        outputChannel.appendLine(`[opsWorkHourRecord] work hours registered: ${calcHours}h on task=${taskResult.id}`);
+      } catch (whError) {
+        outputChannel.appendLine(`[opsWorkHourRecord] work hour registration failed: ${whError instanceof Error ? whError.message : String(whError)}`);
+        vscode.window.showWarningMessage(`工时登记失败: ${whError instanceof Error ? whError.message : String(whError)}`);
+      }
+    }
+
+    const pushStatus = pushFailed ? '（推送失败，请手动 git push）' : '已推送';
+    const openLabel = '在浏览器中打开';
+    vscode.window.showInformationMessage(
+      `运维工时补录完成: ${taskResult.code}，代码已提交。${pushStatus}`,
+      openLabel
+    ).then((selection) => {
+      if (selection === openLabel) {
+        const url = taskResult.url ?? `https://devops.ctjsoft.com/devops-web4/linkIframe/HNoGJlq`;
+        vscode.env.openExternal(vscode.Uri.parse(url));
+      }
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `运维工时补录失败: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+async function findCodeWritingType(provider: DevOpsProvider, cache: DevOpsCache): Promise<string> {
+  try {
+    const types = await cache.getWorkHourTypes(provider);
+    const codeWriting = types.find((t) => t.eleName === '代码编写');
+    if (codeWriting) {
+      return codeWriting.eleCode;
+    }
+  } catch { /* ignore */ }
+  return '24'; // fallback default
+}
+
+async function getOriginUrl(cwd: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFile('git', ['remote', 'get-url', 'origin'], { cwd });
+    return stdout.trim();
+  } catch {
+    return undefined;
+  }
+}
+// @AI-End C6D9E 20260720 @@claudeCode
 
 export function deactivate(): void { }
 
@@ -261,23 +456,27 @@ interface PushAndRecordOptions {
   successMessage: string;
 }
 
+async function doPush(repository: Repository, pushTarget: PushTarget): Promise<void> {
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: '正在推送代码',
+      cancellable: false
+    },
+    () => {
+      if (pushTarget.hasUpstream) {
+        return repository.push();
+      }
+      return repository.push(pushTarget.remoteName, pushTarget.branchName, true);
+    }
+  );
+}
+
 async function pushAndRecordHours(options: PushAndRecordOptions): Promise<void> {
   const { repository, cwd, pushTarget, provider, metadata, config, onPushFailure } = options;
 
   try {
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: '正在推送代码',
-        cancellable: false
-      },
-      () => {
-        if (pushTarget.hasUpstream) {
-          return repository.push();
-        }
-        return repository.push(pushTarget.remoteName, pushTarget.branchName, true);
-      }
-    );
+    await doPush(repository, pushTarget);
   } catch (pushError) {
     await onPushFailure();
     throw pushError;

@@ -39,6 +39,76 @@ export interface WorkHourType {
 }
 // @AI-End Z9Y8X 20260521 @@cc
 
+// @AI-Begin C6D9E 20260720 @@claudeCode
+export interface DevProject {
+  devprojId: string;
+  devprojCname: string;
+}
+
+export interface Product {
+  prodId: string;
+  prodCname: string;
+}
+
+export interface Region {
+  regionId: string;
+  regionName: string;
+}
+
+export interface OpsProject {
+  opsprojId: string;
+  opsprojCname: string;
+}
+
+export interface ProductVersion {
+  id: string;
+  name: string;
+}
+
+export interface ExecuteUser {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface DictValue {
+  eleId: string;
+  eleCode: string;
+  eleName: string;
+}
+
+export interface Module {
+  moduleId: string;
+  moduleName: string;
+}
+
+export interface CreateTaskInput {
+  taskName: string;
+  devprojId: string;
+  prodId: string;
+  regionId: string;
+  opsprojId: string;
+  executeUser: string;
+  importance: string;
+  priority: string;
+  workSource: string;
+  planTaskTime: number;
+  planStartTime: string;
+  planEndTime: string;
+  ecDate: string;
+  moduleId?: string;
+  prodVersionId?: string;
+  taskRemark?: string;
+}
+
+export interface CreateTaskResult {
+  code: string;
+  title: string;
+  id: string;
+  url?: string;
+}
+// @AI-End C6D9E 20260720 @@claudeCode
+
 export interface DevOpsCommitMetadata {
   project: DevOpsProject;
   task: DevOpsTask;
@@ -89,4 +159,16 @@ export interface DevOpsProvider {
     taskWorkhourType: string
   ): Promise<void>;
   // @AI-End A1B2C 20260518 @@cc
+  // @AI-Begin C6D9E 20260720 @@claudeCode
+  createTask?(input: CreateTaskInput): Promise<CreateTaskResult>;
+  fetchDevProjects?(): Promise<DevProject[]>;
+  fetchProductsByProject?(devprojId: string): Promise<Product[]>;
+  fetchRegions?(): Promise<Region[]>;
+  fetchOpsProjectsByRegion?(regionId: string): Promise<OpsProject[]>;
+  fetchExecuteUsers?(productId?: string): Promise<ExecuteUser[]>;
+  fetchProductVersions?(productId: string): Promise<ProductVersion[]>;
+  fetchModules?(productId: string): Promise<Module[]>;
+  fetchDictValues?(catalogCode: string): Promise<DictValue[]>;
+  getUserId?(): Promise<string>;
+  // @AI-End C6D9E 20260720 @@claudeCode
 }

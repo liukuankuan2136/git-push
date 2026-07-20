@@ -1,4 +1,4 @@
-import { DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, WorkHourType } from './DevOpsProvider';
+import { DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, DevProject, DictValue, Region, WorkHourType } from './DevOpsProvider';
 
 export class DevOpsCache {
   private projectsCachedAt = 0;
@@ -8,6 +8,13 @@ export class DevOpsCache {
   private workHourTypesCachedAt = 0;
   private workHourTypes: WorkHourType[] = [];
   // @AI-End Q3P8M 20260521 @@cc
+  // @AI-Begin C6D9E 20260720 @@claudeCode
+  private devProjectsCachedAt = 0;
+  private devProjects: DevProject[] = [];
+  private regionsCachedAt = 0;
+  private regions: Region[] = [];
+  private readonly dictValuesByCode = new Map<string, { cachedAt: number; items: DictValue[] }>();
+  // @AI-End C6D9E 20260720 @@claudeCode
 
   constructor(private readonly ttlMs: number) {}
 
@@ -42,6 +49,36 @@ export class DevOpsCache {
   }
   // @AI-End Q3P8M 20260521 @@cc
 
+  // @AI-Begin C6D9E 20260720 @@claudeCode
+  async getDevProjects(provider: DevOpsProvider): Promise<DevProject[]> {
+    if (this.ttlMs > 0 && Date.now() - this.devProjectsCachedAt < this.ttlMs) {
+      return this.devProjects;
+    }
+    this.devProjects = await provider.fetchDevProjects!();
+    this.devProjectsCachedAt = Date.now();
+    return this.devProjects;
+  }
+
+  async getRegions(provider: DevOpsProvider): Promise<Region[]> {
+    if (this.ttlMs > 0 && Date.now() - this.regionsCachedAt < this.ttlMs) {
+      return this.regions;
+    }
+    this.regions = await provider.fetchRegions!();
+    this.regionsCachedAt = Date.now();
+    return this.regions;
+  }
+
+  async getDictValues(provider: DevOpsProvider, catalogCode: string): Promise<DictValue[]> {
+    const cached = this.dictValuesByCode.get(catalogCode);
+    if (this.ttlMs > 0 && cached && Date.now() - cached.cachedAt < this.ttlMs) {
+      return cached.items;
+    }
+    const items = await provider.fetchDictValues!(catalogCode);
+    this.dictValuesByCode.set(catalogCode, { cachedAt: Date.now(), items });
+    return items;
+  }
+  // @AI-End C6D9E 20260720 @@claudeCode
+
   // @AI-Begin X9N7P 20260518 @@cc
   clear(): void {
     this.projects = [];
@@ -51,6 +88,13 @@ export class DevOpsCache {
     this.workHourTypes = [];
     this.workHourTypesCachedAt = 0;
     // @AI-End Q3P8M 20260521 @@cc
+    // @AI-Begin C6D9E 20260720 @@claudeCode
+    this.devProjects = [];
+    this.devProjectsCachedAt = 0;
+    this.regions = [];
+    this.regionsCachedAt = 0;
+    this.dictValuesByCode.clear();
+    // @AI-End C6D9E 20260720 @@claudeCode
   }
   // @AI-End X9N7P 20260518 @@cc
 }
