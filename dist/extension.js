@@ -157,7 +157,7 @@ async function runOpsWorkHourRecord(config, cache, context) {
         const repoMappingStore = new RepoProductMapping_1.RepoProductMappingStore(context.globalState);
         const existingMapping = originUrl ? repoMappingStore.get(originUrl) : undefined;
         // 收集输入
-        const collected = await (0, QuickPickFlow_1.collectOpsWorkHourRecord)(provider, cache, originUrl ?? '', existingMapping);
+        const collected = await (0, QuickPickFlow_1.collectOpsWorkHourRecord)(provider, cache, originUrl ?? '', existingMapping, config.taskCreateMode);
         if (!collected) {
             return;
         }

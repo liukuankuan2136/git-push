@@ -37,6 +37,7 @@ exports.collectDevOpsCommitMetadata = collectDevOpsCommitMetadata;
 exports.collectOpsWorkHourRecord = collectOpsWorkHourRecord;
 const vscode = __importStar(require("vscode"));
 const DevOpsCommitFormatter_1 = require("../core/DevOpsCommitFormatter");
+const TaskTemplateFlow_1 = require("./TaskTemplateFlow");
 const WORK_HOUR_MODE_HINT = {
     append: '[累加模式]',
     overwrite: '[覆盖模式]'
@@ -345,13 +346,13 @@ function buildSubjectPrompt(config, todayWorkHour) {
     }
     return `${base}\n\n今日描述：\n${todayWorkHour.workContent}\n`;
 }
-async function collectOpsWorkHourRecord(provider, cache, originUrl, existingMapping) {
+async function collectOpsWorkHourRecord(provider, cache, originUrl, existingMapping, taskCreateMode) {
     const today = new Date().toISOString().split('T')[0];
     // ── Step 1: 输入任务标题 ──
     const taskName = await vscode.window.showInputBox({
         title: '运维工时补录 — 任务标题',
         prompt: '请输入任务标题（必填），建议包含地区名称以便自动匹配区域',
-        placeHolder: '例如：安徽数据共享池需求评估',
+        placeHolder: '例如：北京xxxxxxxx',
         ignoreFocusOut: true,
         validateInput: (value) => {
             if (!value.trim()) {
@@ -545,32 +546,15 @@ async function collectOpsWorkHourRecord(provider, cache, originUrl, existingMapp
     if (!commitTypePick) {
         return undefined;
     }
-    // ── Step 9: 运维描述 ──
-    const opsDescription = await vscode.window.showInputBox({
-        title: '运维工时补录 — 运维描述',
-        prompt: '请描述本次运维工作的具体内容（必填，最少 20 字）',
-        placeHolder: '例如：配合安徽医保项目需求，修改了数据同步脚本，调整了查询接口参数...',
-        ignoreFocusOut: true,
-        validateInput: (value) => {
-            const trimmed = value.trim();
-            if (!trimmed) {
-                return '请输入运维描述。';
-            }
-            if (trimmed.length < 20) {
-                return `至少需要 20 个字，当前 ${trimmed.length} 字。`;
-            }
-            if (trimmed.length > 1000) {
-                return '不能超过 1000 个字。';
-            }
-            return undefined;
-        }
+    // ── Step 9: 按模版收集 Task 内容 ──
+    const taskRemark = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在收集任务模版内容', cancellable: false }, async () => {
+        const modeLabel = taskCreateMode === 'simple' ? '简易模式' : taskCreateMode === 'normal' ? '普通模式' : '标杆模式';
+        vscode.window.showInformationMessage(`运维工时补录 — 当前模式: ${modeLabel}`);
+        return (0, TaskTemplateFlow_1.collectTaskTemplateContent)(taskCreateMode);
     });
-    if (!opsDescription) {
+    if (!taskRemark) {
         return undefined;
     }
-    const taskRemark = opsDescription.trim()
-        ? `<p>${opsDescription.trim()}</p>`
-        : '';
     // ── 构建输入 ──
     const taskInput = {
         taskName: taskName.trim(),
@@ -603,7 +587,7 @@ async function collectOpsWorkHourRecord(provider, cache, originUrl, existingMapp
         `投入工时: ${taskInput.planTaskTime}h / 完成度: ${progress}%`,
         `Commit: ${commitTypePick.label}:${taskInput.taskName}`,
         `日期: ${today} (default)`,
-        taskRemark ? `\n运维描述:\n${opsDescription.trim().substring(0, 200)}${opsDescription.trim().length > 200 ? '...' : ''}` : ''
+        taskRemark ? `\n任务内容:\n（已按 ${taskCreateMode === 'simple' ? '简易' : taskCreateMode === 'normal' ? '普通' : '标杆'}模式填写）` : ''
     ].filter(Boolean).join('\n');
     const confirmation = await vscode.window.showInformationMessage(`确认创建运维任务并提交？\n\n${summary}`, { modal: true }, '确认创建并提交');
     if (confirmation !== '确认创建并提交') {

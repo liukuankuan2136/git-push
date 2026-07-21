@@ -54,6 +54,9 @@ class ConfigManager {
             debugMode: config.get('debugMode', false),
             // @AI-End L9P2R 20260606 @@claudeCode
             progressMode: config.get('progressMode', 'overwrite'),
+            // @AI-Begin T1U2V 20260721 @@claudeCode
+            taskCreateMode: config.get('taskCreateMode', 'simple'),
+            // @AI-End T1U2V 20260721 @@claudeCode
             username: await this.secrets.get(ConfigManager.usernameKey),
             password: await this.secrets.get(ConfigManager.passwordKey)
         };

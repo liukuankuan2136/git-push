@@ -2,7 +2,7 @@
   "name": "issue-link-push",
   "displayName": "Issue Link Push",
   "description": "关联 DevOps 任务并自动生成规范的提交信息且推送代码。",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "publisher": "lkk-vscode-2136",
   "author": {
     "name": "LKK",
@@ -171,6 +171,16 @@
           ],
           "default": "overwrite",
           "description": "任务百分比记录模式。追加：新百分比累加到当天已有百分比（上限 100%）；覆盖：新百分比替换已有百分比。"
+        },
+        "issueLinkPush.taskCreateMode": {
+          "type": "string",
+          "enum": [
+            "simple",
+            "normal",
+            "benchmark"
+          ],
+          "default": "simple",
+          "description": "运维工时补录时 Task 内容填写模式。简易：仅输入任务描述；普通：输入任务描述 + 验收标准；标杆：逐章节完整填写（可回车跳过）。"
         }
       }
     }

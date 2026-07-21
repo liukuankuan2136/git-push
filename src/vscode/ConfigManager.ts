@@ -10,6 +10,9 @@ export interface ExtensionConfig {
   debugMode: boolean;
   // @AI-End L9P2R 20260606 @@claudeCode
   progressMode: 'append' | 'overwrite';
+  // @AI-Begin T1U2V 20260721 @@claudeCode
+  taskCreateMode: 'simple' | 'normal' | 'benchmark';
+  // @AI-End T1U2V 20260721 @@claudeCode
   username?: string;
   password?: string;
 }
@@ -35,6 +38,9 @@ export class ConfigManager {
       debugMode: config.get<boolean>('debugMode', false),
       // @AI-End L9P2R 20260606 @@claudeCode
       progressMode: config.get<'append' | 'overwrite'>('progressMode', 'overwrite'),
+      // @AI-Begin T1U2V 20260721 @@claudeCode
+      taskCreateMode: config.get<'simple' | 'normal' | 'benchmark'>('taskCreateMode', 'simple'),
+      // @AI-End T1U2V 20260721 @@claudeCode
       username: await this.secrets.get(ConfigManager.usernameKey),
       password: await this.secrets.get(ConfigManager.passwordKey)
     };

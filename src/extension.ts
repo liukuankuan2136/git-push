@@ -145,7 +145,8 @@ async function runOpsWorkHourRecord(
     const collected = await collectOpsWorkHourRecord(
       provider, cache,
       originUrl ?? '',
-      existingMapping
+      existingMapping,
+      config.taskCreateMode
     );
     if (!collected) { return; }
 
