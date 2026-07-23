@@ -207,10 +207,10 @@ async function runOpsWorkHourRecord(
       vscode.window.showWarningMessage('代码推送失败，请手动推送。工时将继续登记。');
     }
 
-    // 登记工时：日期当天、类型默认"代码编写"、工时=预计工时×完成度(保留1位小数)
+    // 登记工时：日期当天、类型默认"代码编写"、工时=用户输入的本次投入工时
     outputChannel.appendLine('[opsWorkHourRecord] recording work hours...');
     const today = new Date().toISOString().split('T')[0];
-    const calcHours = Math.round(collected.taskInput.planTaskTime * (Number(collected.progress) / 100) * 10) / 10;
+    const calcHours = Number(collected.hours);
 
     if (calcHours <= 0) {
       outputChannel.appendLine(`[opsWorkHourRecord] calculated hours is ${calcHours}, skipping work hour registration`);

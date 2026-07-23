@@ -574,6 +574,41 @@ export async function collectOpsWorkHourRecord(
   });
   if (!progress) { return undefined; }
 
+  // ── Step 7.5: 预计结束时间（完成度 < 100% 时）──
+  // @AI-Begin G8H2I 20260723 @@claudeCode
+  let expectedEndDate: string | undefined;
+  let calculatedPlanTaskTime: number | undefined;
+  if (Number(progress) < 100) {
+    const dateResult = await vscode.window.showInputBox({
+      title: '运维工时补录 — 预计结束时间',
+      prompt: '任务未 100% 完成，请输入预计结束日期',
+      placeHolder: `格式 YYYY-MM-DD，例如：${today}`,
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+          return '日期格式不正确，请输入 YYYY-MM-DD。';
+        }
+        const inputDate = new Date(trimmed);
+        if (isNaN(inputDate.getTime())) {
+          return '无效日期，请重新输入。';
+        }
+        if (trimmed < today) {
+          return '预计结束日期不能早于今天。';
+        }
+        return undefined;
+      }
+    });
+    if (!dateResult) { return undefined; }
+    expectedEndDate = dateResult.trim();
+    // 计算预计工时：日历天数差（含头含尾）× 8h/天
+    const startDate = new Date(today);
+    const endDate = new Date(expectedEndDate);
+    const diffDays = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    calculatedPlanTaskTime = Math.max(diffDays, 1) * 8;
+  }
+  // @AI-End G8H2I 20260723 @@claudeCode
+
   // ── Step 8: 选择 commit type ──
   const COMMIT_TYPES = [
     { label: 'feat', description: '增加新功能' },
@@ -617,10 +652,10 @@ export async function collectOpsWorkHourRecord(
     importance: '2',
     priority: '2',
     workSource: '3',
-    planTaskTime: Number(hours),
+    planTaskTime: calculatedPlanTaskTime ?? Number(hours),
     planStartTime: today,
-    planEndTime: today,
-    ecDate: today,
+    planEndTime: expectedEndDate ?? today,
+    ecDate: expectedEndDate ?? today,
     taskRemark,
     prodVersionId
   };
@@ -637,6 +672,7 @@ export async function collectOpsWorkHourRecord(
     `处理人: 当前用户 (auto)`,
     `优先级: 中 (default) / 工作来源: 常规需求 (default)`,
     `投入工时: ${taskInput.planTaskTime}h / 完成度: ${progress}%`,
+    expectedEndDate ? `预计结束: ${expectedEndDate}（${calculatedPlanTaskTime}h = ${Math.round((new Date(expectedEndDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24)) + 1} 天 × 8h）` : '',
     `Commit: ${commitTypePick.label}:${taskInput.taskName}`,
     `日期: ${today} (default)`,
     taskRemark ? `\n任务内容:\n（已按 ${taskCreateMode === 'simple' ? '简易' : taskCreateMode === 'normal' ? '普通' : '标杆'}模式填写）` : ''

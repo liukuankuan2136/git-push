@@ -14,7 +14,8 @@
       "Bash(mv '代码推送&devops平台登记.gif' push-and-devops.gif)",
       "Bash(mv '代码推送日志.png' push-log.png)",
       "Skill(browse)",
-      "PowerShell(npm run *)"
+      "PowerShell(npm run *)",
+      "Bash(npm run *)"
     ]
   }
 }
