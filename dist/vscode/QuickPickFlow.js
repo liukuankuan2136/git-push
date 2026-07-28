@@ -583,14 +583,15 @@ async function collectOpsWorkHourRecord(provider, cache, originUrl, existingMapp
         return undefined;
     }
     // ── Step 9: 按模版收集 Task 内容 ──
-    const taskRemark = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在收集任务模版内容', cancellable: false }, async () => {
+    const templateResult = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在收集任务模版内容', cancellable: false }, async () => {
         const modeLabel = taskCreateMode === 'simple' ? '简易模式' : taskCreateMode === 'normal' ? '普通模式' : '标杆模式';
         vscode.window.showInformationMessage(`运维工时补录 — 当前模式: ${modeLabel}`);
         return (0, TaskTemplateFlow_1.collectTaskTemplateContent)(taskCreateMode);
     });
-    if (!taskRemark) {
+    if (!templateResult) {
         return undefined;
     }
+    const { taskRemark, taskDesc } = templateResult;
     // ── 构建输入 ──
     const taskInput = {
         taskName: taskName.trim(),
@@ -638,7 +639,8 @@ async function collectOpsWorkHourRecord(provider, cache, originUrl, existingMapp
         workHourTypeCode,
         workHourTypeName,
         devprojName,
-        prodName
+        prodName,
+        taskDesc
     };
 }
 // ── 辅助函数 ──

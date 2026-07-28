@@ -174,14 +174,22 @@ function buildTaskRemarkHtml(collected: Record<string, string>): string {
 
 // ── Public API ──
 
+/** collectTaskTemplateContent 的返回值 */
+export interface TaskTemplateResult {
+  /** 组装好的 taskRemark HTML 字符串（所有章节），用于创建 Task */
+  taskRemark: string;
+  /** 任务描述纯文本，用于工时登记的 workContent */
+  taskDesc: string;
+}
+
 /**
  * 按指定模式收集 Task 模版各章节内容。
  * @param mode 任务内容填写模式
- * @returns 组装好的 taskRemark HTML 字符串；用户取消任意步骤时返回 undefined
+ * @returns 包含 taskRemark（完整HTML）和 taskDesc（任务描述文本）的结果；用户取消任意步骤时返回 undefined
  */
 export async function collectTaskTemplateContent(
   mode: TaskCreateMode
-): Promise<string | undefined> {
+): Promise<TaskTemplateResult | undefined> {
   const sectionIds = MODE_SECTIONS[mode];
   const collected: Record<string, string> = {};
 
@@ -238,7 +246,10 @@ export async function collectTaskTemplateContent(
     }
   }
 
-  return buildTaskRemarkHtml(collected);
+  return {
+    taskRemark: buildTaskRemarkHtml(collected),
+    taskDesc: collected['taskDesc'] || ''
+  };
 }
 
 /** 简易/普通模式下的 prompt 文本 */

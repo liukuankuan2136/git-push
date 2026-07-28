@@ -4,7 +4,7 @@ import { formatDevOpsCommitMetadata } from '../core/DevOpsCommitFormatter';
 import { CreateTaskInput, DevProject, DevOpsCommitMetadata, DevOpsProvider, DevOpsTask, DevOpsTaskType, DictValue, Region, WorkHourRecord, WorkHourType } from '../core/DevOpsProvider';
 import { ExtensionConfig } from './ConfigManager';
 import { RepoProductMapping } from './RepoProductMapping';
-import { collectTaskTemplateContent, TaskCreateMode } from './TaskTemplateFlow';
+import { collectTaskTemplateContent, TaskCreateMode, TaskTemplateResult } from './TaskTemplateFlow';
 
 const WORK_HOUR_MODE_HINT: Record<string, string> = {
   append: '[累加模式]',
@@ -393,6 +393,8 @@ export interface OpsWorkHourInput {
   workHourTypeName: string;
   devprojName: string;
   prodName: string;
+  /** 任务描述纯文本，用于工时登记的 workContent */
+  taskDesc: string;
 }
 
 export async function collectOpsWorkHourRecord(
@@ -631,7 +633,7 @@ export async function collectOpsWorkHourRecord(
   if (!commitTypePick) { return undefined; }
 
   // ── Step 9: 按模版收集 Task 内容 ──
-  const taskRemark = await vscode.window.withProgress(
+  const templateResult = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: '正在收集任务模版内容', cancellable: false },
     async () => {
       const modeLabel = taskCreateMode === 'simple' ? '简易模式' : taskCreateMode === 'normal' ? '普通模式' : '标杆模式';
@@ -639,7 +641,9 @@ export async function collectOpsWorkHourRecord(
       return collectTaskTemplateContent(taskCreateMode);
     }
   );
-  if (!taskRemark) { return undefined; }
+  if (!templateResult) { return undefined; }
+
+  const { taskRemark, taskDesc } = templateResult;
 
   // ── 构建输入 ──
   const taskInput: CreateTaskInput = {
@@ -694,7 +698,8 @@ export async function collectOpsWorkHourRecord(
     workHourTypeCode,
     workHourTypeName,
     devprojName,
-    prodName
+    prodName,
+    taskDesc
   };
 }
 

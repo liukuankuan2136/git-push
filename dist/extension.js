@@ -217,9 +217,8 @@ async function runOpsWorkHourRecord(config, cache, context) {
         }
         else {
             const codeWritingType = await findCodeWritingType(provider, cache);
-            const workContent = collected.taskInput.taskRemark
-                ? collected.taskInput.taskRemark.replace(/<[^>]*>/g, '')
-                : collected.taskInput.taskName;
+            const workContent = collected.taskDesc
+                || collected.taskInput.taskName;
             try {
                 await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在登记工时到 DevOps', cancellable: false }, async () => {
                     await provider.addWorkHour(taskResult.id, today, calcHours, `${collected.progress}%`, workContent, codeWritingType);

@@ -217,9 +217,8 @@ async function runOpsWorkHourRecord(
       vscode.window.showWarningMessage(`工时登记已跳过：当前完成度 ${collected.progress}% 下计算工时为 0。`);
     } else {
       const codeWritingType = await findCodeWritingType(provider, cache);
-      const workContent = collected.taskInput.taskRemark
-        ? collected.taskInput.taskRemark.replace(/<[^>]*>/g, '')
-        : collected.taskInput.taskName;
+      const workContent = collected.taskDesc
+        || collected.taskInput.taskName;
 
       try {
         await vscode.window.withProgress(

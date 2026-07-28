@@ -177,11 +177,10 @@ function buildTaskRemarkHtml(collected) {
     }
     return html;
 }
-// ── Public API ──
 /**
  * 按指定模式收集 Task 模版各章节内容。
  * @param mode 任务内容填写模式
- * @returns 组装好的 taskRemark HTML 字符串；用户取消任意步骤时返回 undefined
+ * @returns 包含 taskRemark（完整HTML）和 taskDesc（任务描述文本）的结果；用户取消任意步骤时返回 undefined
  */
 async function collectTaskTemplateContent(mode) {
     const sectionIds = MODE_SECTIONS[mode];
@@ -234,7 +233,10 @@ async function collectTaskTemplateContent(mode) {
             collected[section.id] = section.defaultContent;
         }
     }
-    return buildTaskRemarkHtml(collected);
+    return {
+        taskRemark: buildTaskRemarkHtml(collected),
+        taskDesc: collected['taskDesc'] || ''
+    };
 }
 /** 简易/普通模式下的 prompt 文本 */
 function buildSimplePrompt(section) {

@@ -15,7 +15,8 @@
       "Bash(mv '代码推送日志.png' push-log.png)",
       "Skill(browse)",
       "PowerShell(npm run *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "WebFetch(domain:devops.ctjsoft.com)"
     ]
   }
 }
