@@ -13,6 +13,9 @@ export interface ExtensionConfig {
   // @AI-Begin T1U2V 20260721 @@claudeCode
   taskCreateMode: 'simple' | 'normal' | 'benchmark';
   // @AI-End T1U2V 20260721 @@claudeCode
+  // @AI-Begin D5E6F 20260807 @@claudeCode
+  upgradeReminder: boolean;
+  // @AI-End D5E6F 20260807 @@claudeCode
   username?: string;
   password?: string;
 }
@@ -41,6 +44,9 @@ export class ConfigManager {
       // @AI-Begin T1U2V 20260721 @@claudeCode
       taskCreateMode: config.get<'simple' | 'normal' | 'benchmark'>('taskCreateMode', 'simple'),
       // @AI-End T1U2V 20260721 @@claudeCode
+      // @AI-Begin D5E6F 20260807 @@claudeCode
+      upgradeReminder: config.get<boolean>('upgradeReminder', false),
+      // @AI-End D5E6F 20260807 @@claudeCode
       username: await this.secrets.get(ConfigManager.usernameKey),
       password: await this.secrets.get(ConfigManager.passwordKey)
     };

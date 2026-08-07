@@ -166,6 +166,124 @@ class CompanyDevOpsAdapter {
         return result;
     }
     // @AI-End K3M8Q 20260606 @@claudeCode
+    // @AI-Begin A8B3C 20260807 @@claudeCode
+    async fetchTasksByProduct(devprojId, prodId) {
+        const session = await this.getSession();
+        const log = this.options.log ?? (() => { });
+        const baseCondition = {
+            topMenuId: DEVOPS_DEV_TASK_TOP_MENU_ID,
+            pageId: DEVOPS_DEV_TASK_PAGE_ID,
+            currentUser: session.userId,
+            currentProductId: 'undefined',
+            configFlag: 'Task',
+            progressStatus: '',
+            taskTypeQueryRule: '0',
+            devprojId: [devprojId],
+            prodId: [prodId]
+        };
+        const headers = {
+            'content-type': 'application/json',
+            cookie: session.cookie,
+            origin: DEVOPS_BASE_URL,
+            'user-context': JSON.stringify({
+                userId: session.userId,
+                pageId: DEVOPS_DEV_TASK_PAGE_ID
+            })
+        };
+        // ── Step 1: 获取时间分组摘要 ──
+        const step1Body = {
+            current: '1',
+            size: '50',
+            simpleFieldCondition: baseCondition,
+            groupId: '1'
+        };
+        log(`[fetchTasksByProduct] Step1 group summaries`);
+        const step1Raw = await (0, http_1.fetchJson)(this.name, `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`, {
+            method: 'POST',
+            timeoutMs: this.options.timeoutMs,
+            headers,
+            body: JSON.stringify(step1Body)
+        });
+        const groups = (step1Raw.data ?? []);
+        log(`[fetchTasksByProduct] Step1 got ${groups.length} groups`);
+        if (groups.length === 0) {
+            return [];
+        }
+        // ── 筛选本周分组 ──
+        const { weekStart, weekEnd } = getCurrentWeekRange();
+        // 本周日期集合（yyyy-MM-dd），包含周一到今天
+        const weekDates = new Set();
+        {
+            const d = new Date(weekStart);
+            const today = new Date().toISOString().split('T')[0];
+            while (d.toISOString().split('T')[0] <= today) {
+                weekDates.add(d.toISOString().split('T')[0]);
+                d.setDate(d.getDate() + 1);
+            }
+        }
+        log(`[fetchTasksByProduct] week dates: ${[...weekDates].join(', ')}`);
+        const tasksPerGroup = [];
+        for (const group of groups) {
+            const groupName = String(group.groupName ?? '');
+            const groupFieldValue = String(group.groupFieldValue ?? '');
+            const groupTaskCount = Number(group.groupTaskCount) || 0;
+            if (!groupFieldValue || groupTaskCount <= 0) {
+                continue;
+            }
+            // 判断是否属于本周：名称以"今天"或"昨天"开头，或日期在本周范围内
+            const dateMatch = groupName.match(/^(\d{4}-\d{2}-\d{2})/);
+            const isToday = groupName.startsWith('今天');
+            const isYesterday = groupName.startsWith('昨天');
+            const isWeekDate = dateMatch && weekDates.has(dateMatch[1]);
+            if (!isToday && !isYesterday && !isWeekDate) {
+                log(`[fetchTasksByProduct] skip group: ${groupName}`);
+                continue;
+            }
+            log(`[fetchTasksByProduct] expand group: ${groupName} (${groupTaskCount} tasks)`);
+            // ── Step 2: 展开分组获取具体 Task ──
+            const step2Body = {
+                simpleFieldCondition: {
+                    ...baseCondition,
+                    parentId: groupFieldValue
+                },
+                groupId: '1',
+                groupField: 'createTime',
+                groupFieldValue,
+                parentGroupInfos: [],
+                groupTaskCount
+            };
+            tasksPerGroup.push((0, http_1.fetchJson)(this.name, `${DEVOPS_BASE_URL}/devops-server/config/v3/task/query/loadTaskListWithGroup`, {
+                method: 'POST',
+                timeoutMs: this.options.timeoutMs,
+                headers,
+                body: JSON.stringify(step2Body)
+            }).then((raw) => {
+                const arr = raw.data ?? [];
+                log(`[fetchTasksByProduct] Step2 group ${groupName} returned ${arr.length} tasks`);
+                return arr
+                    .map((item) => this.toTask(item, 'task'))
+                    .filter((task) => task.code && task.title);
+            }).catch((err) => {
+                log(`[fetchTasksByProduct] Step2 group ${groupName} failed: ${err instanceof Error ? err.message : String(err)}`);
+                return [];
+            }));
+        }
+        // ── 等所有分组展开完毕，合并 ──
+        const results = await Promise.all(tasksPerGroup);
+        const seen = new Set();
+        const allTasks = [];
+        for (const tasks of results) {
+            for (const task of tasks) {
+                if (!seen.has(task.code)) {
+                    seen.add(task.code);
+                    allTasks.push(task);
+                }
+            }
+        }
+        log(`[fetchTasksByProduct] total tasks: ${allTasks.length} codes=${allTasks.map((t) => t.code).join(', ')}`);
+        return allTasks;
+    }
+    // @AI-End A8B3C 20260807 @@claudeCode
     // @AI-Begin M7N8K 20260605 @@claudeCode
     async fetchTaskByCode(code, type) {
         const session = await this.getSession();
@@ -660,7 +778,15 @@ class CompanyDevOpsAdapter {
                 task.executeTaskTime),
             currentProgress: toOptionalString(task.completion ?? task.groupTaskSumCompletion),
             url: typeof task.url === 'string' ? task.url : undefined,
-            id: String(task.taskId ?? task.id ?? code)
+            id: String(task.taskId ?? task.id ?? code),
+            // @AI-Begin A8B3C 20260807 @@claudeCode
+            regionId: typeof task.regionId === 'string' ? task.regionId : undefined,
+            regionName: typeof task.regionName === 'string' ? task.regionName : undefined,
+            opsprojId: typeof task.opsprojId === 'string' ? task.opsprojId : undefined,
+            opsprojName: typeof task.opsprojName === 'string' ? task.opsprojName : undefined,
+            createTime: typeof task.createTime === 'string' ? task.createTime : undefined,
+            executeUserName: typeof task.executeUserName === 'string' ? task.executeUserName : undefined,
+            // @AI-End A8B3C 20260807 @@claudeCode
         };
     }
 }
@@ -766,4 +892,26 @@ function collectTaskObjects(value, items) {
         collectTaskObjects(child, items);
     }
 }
+// @AI-Begin A8B3C 20260807 @@claudeCode
+/** 获取当前自然周范围（周一 ～ 周日），返回 yyyy-MM-dd 格式字符串。 */
+function getCurrentWeekRange() {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=周日, 1=周一, ..., 6=周六
+    // 计算周一的偏移：如果今天是周日(0)，周一在6天前；否则周一在 (dayOfWeek-1) 天前
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    const fmt = (d) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+    return { weekStart: fmt(monday), weekEnd: fmt(sunday) };
+}
+// @AI-End A8B3C 20260807 @@claudeCode
 //# sourceMappingURL=CompanyDevOpsAdapter.js.map

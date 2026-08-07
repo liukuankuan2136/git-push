@@ -2,7 +2,7 @@
   "name": "issue-link-push",
   "displayName": "Issue Link Push",
   "description": "关联 DevOps 任务并自动生成规范的提交信息且推送代码。",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "publisher": "lkk-vscode-2136",
   "author": {
     "name": "LKK",
@@ -38,6 +38,7 @@
     "onCommand:issueLinkPush.initializeDevOps",
     "onCommand:issueLinkPush.clearCache",
     "onCommand:issueLinkPush.opsWorkHourRecord",
+    "onCommand:issueLinkPush.regionCheck",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
@@ -78,6 +79,12 @@
         "title": "运维工时补录",
         "category": "Issue Link Push",
         "icon": "$(debug-start)"
+      },
+      {
+        "command": "issueLinkPush.regionCheck",
+        "title": "区域合规检查",
+        "category": "Issue Link Push",
+        "icon": "$(location)"
       }
     ],
     "menus": {
@@ -117,6 +124,9 @@
         },
         {
           "command": "issueLinkPush.opsWorkHourRecord"
+        },
+        {
+          "command": "issueLinkPush.regionCheck"
         }
       ]
     },
@@ -181,6 +191,11 @@
           ],
           "default": "simple",
           "description": "运维工时补录时 Task 内容填写模式。简易：仅输入任务描述；普通：输入任务描述 + 验收标准；标杆：逐章节完整填写（可回车跳过）。"
+        },
+        "issueLinkPush.upgradeReminder": {
+          "type": "boolean",
+          "default": false,
+          "description": "升级提醒。开启后，扩展更新时弹出升级提醒通知。默认关闭。"
         }
       }
     }

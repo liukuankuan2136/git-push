@@ -57,6 +57,9 @@ class ConfigManager {
             // @AI-Begin T1U2V 20260721 @@claudeCode
             taskCreateMode: config.get('taskCreateMode', 'simple'),
             // @AI-End T1U2V 20260721 @@claudeCode
+            // @AI-Begin D5E6F 20260807 @@claudeCode
+            upgradeReminder: config.get('upgradeReminder', false),
+            // @AI-End D5E6F 20260807 @@claudeCode
             username: await this.secrets.get(ConfigManager.usernameKey),
             password: await this.secrets.get(ConfigManager.passwordKey)
         };

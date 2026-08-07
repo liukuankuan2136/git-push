@@ -44,8 +44,10 @@ const AmendStrategy_1 = require("./vscode/AmendStrategy");
 const DevOpsCommitFormatter_1 = require("./core/DevOpsCommitFormatter");
 const git_1 = require("./vscode/git");
 const providerFactory_1 = require("./vscode/providerFactory");
+const CompanyDevOpsAdapter_1 = require("./core/providers/CompanyDevOpsAdapter");
 const QuickPickFlow_1 = require("./vscode/QuickPickFlow");
 const RepoProductMapping_1 = require("./vscode/RepoProductMapping");
+const RegionCheckFlow_1 = require("./vscode/RegionCheckFlow");
 const execFile = util.promisify(cp.execFile);
 function activate(context) {
     const configManager = new ConfigManager_1.ConfigManager(context.secrets);
@@ -103,23 +105,36 @@ function activate(context) {
         const config = await configManager.load();
         cache ??= new DevOpsCache_1.DevOpsCache(config.cacheTtlMs);
         await runOpsWorkHourRecord(config, cache, context);
-    })
+    }), 
     // @AI-End C6D9E 20260720 @@claudeCode
+    // @AI-Begin A8B3C 20260807 @@claudeCode
+    vscode.commands.registerCommand('issueLinkPush.regionCheck', async () => {
+        const config = await configManager.load();
+        cache ??= new DevOpsCache_1.DevOpsCache(config.cacheTtlMs);
+        await runRegionCheck(config, cache);
+    })
+    // @AI-End A8B3C 20260807 @@claudeCode
     );
     // @AI-Begin V5W2X 20260606 @@claudeCode
+    // @AI-Begin D5E6F 20260807 @@claudeCode — 升级提醒改为由 issueLinkPush.upgradeReminder 配置控制，默认不提醒
     const currentVersion = context.extension.packageJSON.version;
     const storedVersion = context.globalState.get('issueLinkPush.lastVersion');
+    const upgradeReminder = vscode.workspace.getConfiguration('issueLinkPush').get('upgradeReminder', false);
     providerFactory_1.outputChannel.appendLine(`[versionCheck] currentVersion: ${currentVersion}`);
     providerFactory_1.outputChannel.appendLine(`[versionCheck] storedVersion: ${storedVersion ?? '<none>'}`);
     providerFactory_1.outputChannel.appendLine(`[versionCheck] isUpgrade: ${currentVersion !== storedVersion}`);
+    providerFactory_1.outputChannel.appendLine(`[versionCheck] upgradeReminder: ${upgradeReminder}`);
     if (currentVersion !== storedVersion) {
         context.globalState.update('issueLinkPush.lastVersion', currentVersion);
-        vscode.window.showInformationMessage(`Issue Link Push 已更新至 v${currentVersion}`, '查看变更').then((selection) => {
-            if (selection === '查看变更') {
-                vscode.env.openExternal(vscode.Uri.parse('https://github.com/liukuankuan2136/git-push/releases'));
-            }
-        });
+        if (upgradeReminder) {
+            vscode.window.showInformationMessage(`Issue Link Push 已更新至 v${currentVersion}`, '查看变更').then((selection) => {
+                if (selection === '查看变更') {
+                    vscode.env.openExternal(vscode.Uri.parse('https://github.com/liukuankuan2136/git-push/releases'));
+                }
+            });
+        }
     }
+    // @AI-End D5E6F 20260807 @@claudeCode
     // @AI-End V5W2X 20260606 @@claudeCode
 }
 // @AI-Begin C6D9E 20260720 @@claudeCode
@@ -263,6 +278,29 @@ async function getOriginUrl(cwd) {
         return undefined;
     }
 }
+// @AI-Begin A8B3C 20260807 @@claudeCode
+async function runRegionCheck(config, cache) {
+    try {
+        // 区域合规检查始终开启诊断日志
+        const provider = new CompanyDevOpsAdapter_1.CompanyDevOpsAdapter({
+            username: config.username,
+            password: config.password,
+            timeoutMs: config.requestTimeoutMs,
+            log: (msg) => providerFactory_1.outputChannel.appendLine(msg)
+        });
+        if (!provider.fetchTasksByProduct || !provider.fetchWorkHours
+            || !provider.fetchDevProjects || !provider.fetchProductsByProject) {
+            vscode.window.showErrorMessage('当前 DevOps 提供者不支持区域合规检查功能。');
+            return;
+        }
+        await provider.testConnection();
+        await (0, RegionCheckFlow_1.collectRegionCheckReport)(provider, cache, providerFactory_1.outputChannel);
+    }
+    catch (error) {
+        vscode.window.showErrorMessage(`区域合规检查失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+// @AI-End A8B3C 20260807 @@claudeCode
 // @AI-End C6D9E 20260720 @@claudeCode
 function deactivate() { }
 // @AI-End D8E4F 20260520 @@cc

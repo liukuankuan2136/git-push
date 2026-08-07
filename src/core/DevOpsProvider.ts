@@ -18,6 +18,14 @@ export interface DevOpsTask {
   currentProgress?: string;
   url?: string;
   id?: string;
+  // @AI-Begin A8B3C 20260807 @@claudeCode
+  regionId?: string;
+  regionName?: string;
+  opsprojId?: string;
+  opsprojName?: string;
+  createTime?: string;
+  executeUserName?: string;
+  // @AI-End A8B3C 20260807 @@claudeCode
 }
 // @AI-End R2S5T 20260519 @@cc
 
@@ -140,6 +148,10 @@ export interface DevOpsProvider {
   /** 按编号查询单个 task/bug，不做所属人员过滤。未找到返回 null。 */
   fetchTaskByCode?(code: string, type: DevOpsTaskType): Promise<DevOpsTask | null>;
   // @AI-End M7N8K 20260605 @@claudeCode
+  // @AI-Begin A8B3C 20260807 @@claudeCode
+  /** 按产品拉取本周（按创建时间）所有用户的 task 列表，含区域和实施项目字段。 */
+  fetchTasksByProduct?(devprojId: string, prodId: string): Promise<DevOpsTask[]>;
+  // @AI-End A8B3C 20260807 @@claudeCode
   addWorkHour?(
     taskId: string,
     createTime: string,
