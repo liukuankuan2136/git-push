@@ -659,7 +659,7 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
 
     const payload: Record<string, unknown> = {
       workSource: input.workSource,
-      taskWorkItemCatalog: '3',
+      taskWorkItemCatalog: input.taskWorkItemCatalog ?? '3',
       importance: input.importance,
       priority: input.priority,
       ecDate: input.ecDate || today,

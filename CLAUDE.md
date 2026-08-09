@@ -30,6 +30,8 @@ src/
     ├── QuickPickFlow.ts      # 多步骤 QuickPick 交互流程（选类型→选任务→选工时类型→填工时→填进度→确认）
     ├── RegionCheckFlow.ts    # 区域合规检查交互流程（选项目→选产品→拉取任务→逐条检查→输出报告）
     ├── PushDayWorkFlow.ts    # 日报提交交互流程（拉取工时→编辑明日计划→确认→提交）
+    ├── DailyTaskFlow.ts      # 日常任务登记交互流程（选项目/产品→选工时类型→自动映射任务类型→填模板→创建Task+登记工时）
+    ├── WorkspaceMapping.ts   # 基于工作区路径的项目/产品记忆（不依赖 Git）
     └── providerFactory.ts    # DevOpsProvider 工厂 + 输出通道
 ```
 
@@ -45,6 +47,7 @@ src/
 | `issueLinkPush.opsWorkHourRecord` | 运维工时补录 | 创建 Task 并登记工时 |
 | `issueLinkPush.regionCheck` | 区域合规检查 | 选产品→拉本周全部任务→检查地名合规→输出报告 |
 | `issueLinkPush.pushDayWork` | 提交日报 | 拉取今日工时→编辑明日计划→确认→提交日报 |
+| `issueLinkPush.dailyTask` | 日常任务登记 | 不依赖 Git，选项目/产品→选工时类型(自动映射任务类型)→填模板→创建Task+登记工时 |
 
 ## 配置项 (`issueLinkPush.*`)
 

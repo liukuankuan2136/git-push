@@ -92,6 +92,12 @@
         "title": "提交日报",
         "category": "Issue Link Push",
         "icon": "$(notebook)"
+      },
+      {
+        "command": "issueLinkPush.dailyTask",
+        "title": "日常任务登记",
+        "category": "Issue Link Push",
+        "icon": "$(checklist)"
       }
     ],
     "menus": {
@@ -137,6 +143,9 @@
         },
         {
           "command": "issueLinkPush.pushDayWork"
+        },
+        {
+          "command": "issueLinkPush.dailyTask"
         }
       ]
     },

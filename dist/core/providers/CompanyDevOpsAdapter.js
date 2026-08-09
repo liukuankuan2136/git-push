@@ -497,7 +497,7 @@ class CompanyDevOpsAdapter {
         const today = new Date().toISOString().split('T')[0];
         const payload = {
             workSource: input.workSource,
-            taskWorkItemCatalog: '3',
+            taskWorkItemCatalog: input.taskWorkItemCatalog ?? '3',
             importance: input.importance,
             priority: input.priority,
             ecDate: input.ecDate || today,

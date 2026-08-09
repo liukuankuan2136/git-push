@@ -107,6 +107,8 @@ export interface CreateTaskInput {
   moduleId?: string;
   prodVersionId?: string;
   taskRemark?: string;
+  /** 工作项任务类型，由工时类型映射得出；未指定时 fallback 到 '3' */
+  taskWorkItemCatalog?: string;
 }
 
 export interface CreateTaskResult {

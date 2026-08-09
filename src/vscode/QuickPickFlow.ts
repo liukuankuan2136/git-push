@@ -5,6 +5,7 @@ import { CreateTaskInput, DevProject, DevOpsCommitMetadata, DevOpsProvider, DevO
 import { ExtensionConfig } from './ConfigManager';
 import { RepoProductMapping } from './RepoProductMapping';
 import { collectTaskTemplateContent, TaskCreateMode, TaskTemplateResult } from './TaskTemplateFlow';
+import { WORK_HOUR_TO_TASK_CATALOG } from './DailyTaskFlow';
 
 const WORK_HOUR_MODE_HINT: Record<string, string> = {
   append: '[累加模式]',
@@ -543,9 +544,10 @@ export async function collectOpsWorkHourRecord(
   });
   if (!hours) { return undefined; }
 
-  // ── Step 6: 选择工时类型（复用已有）──
+  // ── Step 6: 选择工时类型 → 自动映射任务类型 ──
   let workHourTypeCode = '24';
   let workHourTypeName = '';
+  let taskWorkItemCatalog = '3';
   if (provider.fetchWorkHourTypes) {
     const types = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: '正在加载工时类型', cancellable: false },
@@ -553,12 +555,17 @@ export async function collectOpsWorkHourRecord(
     );
     if (types.length > 0) {
       const typePick = await vscode.window.showQuickPick(
-        types.map((t) => ({ label: t.eleName, code: t.eleCode })),
-        { title: '选择工时类型', ignoreFocusOut: true }
+        types.map((t) => {
+          const mappedCatalog = WORK_HOUR_TO_TASK_CATALOG[t.eleCode];
+          const mappedLabel = mappedCatalog ? ` → 任务类型=${mappedCatalog}` : '';
+          return { label: t.eleName, description: mappedLabel, code: t.eleCode };
+        }),
+        { title: '选择工时类型（将自动映射任务类型）', ignoreFocusOut: true }
       );
       if (!typePick) { return undefined; }
       workHourTypeCode = typePick.code;
       workHourTypeName = typePick.label;
+      taskWorkItemCatalog = WORK_HOUR_TO_TASK_CATALOG[workHourTypeCode] ?? '3';
     }
   }
 
@@ -653,7 +660,7 @@ export async function collectOpsWorkHourRecord(
     regionId,
     opsprojId,
     executeUser: await provider.getUserId!(),
-    importance: '2',
+    importance: '1',
     priority: '2',
     workSource: '3',
     planTaskTime: calculatedPlanTaskTime ?? Number(hours),
@@ -661,7 +668,8 @@ export async function collectOpsWorkHourRecord(
     planEndTime: expectedEndDate ?? today,
     ecDate: expectedEndDate ?? today,
     taskRemark,
-    prodVersionId
+    prodVersionId,
+    taskWorkItemCatalog
   };
 
   // ── 确认页 ──
@@ -674,6 +682,7 @@ export async function collectOpsWorkHourRecord(
     `区域: ${regionName}${matchedRegion ? ' (自动匹配)' : ''}`,
     opsprojId ? `实施项目: ${opsName}` : '',
     `处理人: 当前用户 (auto)`,
+    `任务类型: ${taskWorkItemCatalog}（由工时类型 "${workHourTypeName}" 自动映射）`,
     `优先级: 中 (default) / 工作来源: 常规需求 (default)`,
     `投入工时: ${taskInput.planTaskTime}h / 完成度: ${progress}%`,
     expectedEndDate ? `预计结束: ${expectedEndDate}（${calculatedPlanTaskTime}h = ${Math.round((new Date(expectedEndDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24)) + 1} 天 × 8h）` : '',
@@ -706,7 +715,7 @@ export async function collectOpsWorkHourRecord(
 // ── 辅助函数 ──
 
 /** 从标题模糊匹配区域，按名称长度降序匹配 */
-function matchRegionFromTitle(title: string, regions: Region[]): Region | undefined {
+export function matchRegionFromTitle(title: string, regions: Region[]): Region | undefined {
   const sorted = [...regions]
     .filter((r) => r.regionName && r.regionName.length > 1)
     .sort((a, b) => b.regionName.length - a.regionName.length);
@@ -717,7 +726,7 @@ function matchRegionFromTitle(title: string, regions: Region[]): Region | undefi
 }
 
 /** 弹出区域选择框 */
-async function pickRegion(regions: Region[]): Promise<string | undefined> {
+export async function pickRegion(regions: Region[]): Promise<string | undefined> {
   if (regions.length === 0) {
     vscode.window.showWarningMessage('没有可用的区域。');
     return undefined;
@@ -730,7 +739,7 @@ async function pickRegion(regions: Region[]): Promise<string | undefined> {
 }
 
 /** 选择研发项目 → 级联选择产品 */
-async function pickDevProjectAndProduct(
+export async function pickDevProjectAndProduct(
   provider: DevOpsProvider,
   cache: DevOpsCache
 ): Promise<{ devprojId: string; devprojName: string; prodId: string; prodName: string } | undefined> {

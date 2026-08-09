@@ -13,6 +13,8 @@ import { collectDevOpsCommitMetadata, collectOpsWorkHourRecord, OpsWorkHourInput
 import { RepoProductMappingStore } from './vscode/RepoProductMapping';
 import { collectRegionCheckReport } from './vscode/RegionCheckFlow';
 import { collectPushDayWork } from './vscode/PushDayWorkFlow';
+import { WorkspaceMappingStore, WorkspaceProductMapping } from './vscode/WorkspaceMapping';
+import { collectDailyTaskInput, DailyTaskInput } from './vscode/DailyTaskFlow';
 
 const execFile = util.promisify(cp.execFile);
 
@@ -46,6 +48,11 @@ export function activate(context: vscode.ExtensionContext): void {
       repoMappingStore.clear();
       parts.push('仓库映射');
       // @AI-End C6D9E 20260720 @@claudeCode
+      // @AI-Begin D8E9F 20260809 @@claudeCode
+      const workspaceMappingStore = new WorkspaceMappingStore(context.globalState);
+      workspaceMappingStore.clear();
+      parts.push('工作区映射');
+      // @AI-End D8E9F 20260809 @@claudeCode
       if (parts.length > 0) {
         vscode.window.showInformationMessage(`${parts.join('、')}已清除。`);
       } else {
@@ -91,6 +98,13 @@ export function activate(context: vscode.ExtensionContext): void {
       await runPushDayWork(config);
     })
     // @AI-End K1L2M 20260809 @@claudeCode
+    // @AI-Begin D8E9F 20260809 @@claudeCode
+    ,vscode.commands.registerCommand('issueLinkPush.dailyTask', async () => {
+      const config = await configManager.load();
+      cache ??= new DevOpsCache(config.cacheTtlMs);
+      await runDailyTask(config, cache, context);
+    })
+    // @AI-End D8E9F 20260809 @@claudeCode
   );
 
   // @AI-Begin V5W2X 20260606 @@claudeCode
@@ -382,6 +396,118 @@ async function runPushDayWork(config: ExtensionConfig): Promise<void> {
   }
 }
 // @AI-End K1L2M 20260809 @@claudeCode
+
+// @AI-Begin D8E9F 20260809 @@claudeCode
+async function runDailyTask(
+  config: ExtensionConfig,
+  cache: DevOpsCache,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  try {
+    if (!config.username || !config.password) {
+      vscode.window.showErrorMessage('请先执行"初始化 DevOps 账号"，保存用户名和密码。');
+      return;
+    }
+
+    // 获取工作区路径作为记忆 key
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showWarningMessage('当前没有打开工作区。');
+      return;
+    }
+    const workspacePath = workspaceFolder.uri.fsPath;
+
+    // 创建 provider
+    const provider = createProvider(config);
+    if (!provider.createTask || !provider.fetchDevProjects || !provider.fetchRegions
+        || !provider.fetchProductsByProject || !provider.fetchOpsProjectsByRegion
+        || !provider.getUserId || !provider.addWorkHour) {
+      vscode.window.showErrorMessage('当前 DevOps 提供者不支持日常任务登记所需的功能。');
+      return;
+    }
+
+    await provider.testConnection();
+
+    // 工作区路径映射
+    const mappingStore = new WorkspaceMappingStore(context.globalState);
+    const existingMapping = mappingStore.get(workspacePath);
+
+    // 收集输入
+    const collected = await collectDailyTaskInput(
+      provider, cache,
+      workspacePath,
+      existingMapping,
+      config.taskCreateMode
+    );
+    if (!collected) { return; }
+
+    // 保存工作区映射
+    if (!existingMapping) {
+      mappingStore.set(workspacePath, {
+        devprojId: collected.taskInput.devprojId,
+        devprojName: collected.devprojName,
+        prodId: collected.taskInput.prodId,
+        prodName: collected.prodName
+      });
+    }
+
+    // 创建任务
+    const taskResult = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在创建 DevOps 任务', cancellable: false },
+      async () => provider.createTask!(collected.taskInput)
+    );
+    outputChannel.appendLine(`[dailyTask] task created: code=${taskResult.code}, id=${taskResult.id}`);
+
+    // 登记工时
+    outputChannel.appendLine('[dailyTask] recording work hours...');
+    const today = new Date().toISOString().split('T')[0];
+    const calcHours = Number(collected.hours);
+
+    if (calcHours <= 0) {
+      outputChannel.appendLine(`[dailyTask] calculated hours is ${calcHours}, skipping work hour registration`);
+      vscode.window.showWarningMessage(`工时登记已跳过：当前完成度 ${collected.progress}% 下计算工时为 0。`);
+    } else {
+      const workContent = collected.taskDesc
+        || collected.taskInput.taskName;
+
+      try {
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: '正在登记工时到 DevOps', cancellable: false },
+          async () => {
+            await provider.addWorkHour!(
+              taskResult.id,
+              today,
+              calcHours,
+              `${collected.progress}%`,
+              workContent,
+              collected.workHourTypeCode
+            );
+          }
+        );
+        outputChannel.appendLine(`[dailyTask] work hours registered: ${calcHours}h on task=${taskResult.id}`);
+      } catch (whError) {
+        outputChannel.appendLine(`[dailyTask] work hour registration failed: ${whError instanceof Error ? whError.message : String(whError)}`);
+        vscode.window.showWarningMessage(`工时登记失败: ${whError instanceof Error ? whError.message : String(whError)}`);
+      }
+    }
+
+    const openLabel = '在浏览器中打开';
+    vscode.window.showInformationMessage(
+      `日常任务已创建: ${taskResult.code}，工时已登记。`,
+      openLabel
+    ).then((selection) => {
+      if (selection === openLabel) {
+        const url = taskResult.url ?? `https://devops.ctjsoft.com/devops-web4/linkIframe/HNoGJlq`;
+        vscode.env.openExternal(vscode.Uri.parse(url));
+      }
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `日常任务登记失败: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+// @AI-End D8E9F 20260809 @@claudeCode
 
 export function deactivate(): void { }
 

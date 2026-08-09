@@ -38,9 +38,10 @@ exports.collectPushDayWork = collectPushDayWork;
 const vscode = __importStar(require("vscode"));
 /**
  * 日报提交命令的完整交互流程。
+ * @param log 调试日志函数，非 debug 模式传入空函数即可
  * 返回 undefined 表示用户取消。
  */
-async function collectPushDayWork(provider, outputChannel) {
+async function collectPushDayWork(provider, log) {
     // ── 能力检查 ──
     if (!provider.fetchTodayWork || !provider.fetchTomorrowPlan
         || !provider.submitDailyReport || !provider.checkTodayWorkHourEnough) {
@@ -48,7 +49,7 @@ async function collectPushDayWork(provider, outputChannel) {
         return undefined;
     }
     const reportDate = normalizeReportDate();
-    outputChannel.appendLine(`[pushDayWork] reportDate: ${reportDate}`);
+    log(`[pushDayWork] reportDate: ${reportDate}`);
     // ── 并行拉取数据 ──
     let summary;
     let tomorrowPlan;
@@ -72,8 +73,8 @@ async function collectPushDayWork(provider, outputChannel) {
         vscode.window.showErrorMessage(`拉取日报数据失败: ${error instanceof Error ? error.message : String(error)}`);
         return undefined;
     }
-    outputChannel.appendLine(`[pushDayWork] todayWork totalHours: ${summary.totalHours}h, hourCheck: ${hourCheck}`);
-    outputChannel.appendLine(`[pushDayWork] tomorrowPlan length: ${tomorrowPlan.length}`);
+    log(`[pushDayWork] todayWork totalHours: ${summary.totalHours}h, hourCheck: ${hourCheck}`);
+    log(`[pushDayWork] tomorrowPlan length: ${tomorrowPlan.length}`);
     // ── 前置检查 ──
     // 工时不足 8h 警告（允许继续，不阻断）
     const hourNumber = parseFloat(hourCheck);
@@ -85,7 +86,7 @@ async function collectPushDayWork(provider, outputChannel) {
     }
     // ── Step 1: 展示摘要 + 编辑明日计划 ──
     const summaryText = formatSummaryText(summary);
-    outputChannel.appendLine(`[pushDayWork] summary:\n${summaryText}`);
+    log(`[pushDayWork] summary:\n${summaryText}`);
     const nextPlanResult = await vscode.window.showInputBox({
         title: '日报 — 编辑明日计划',
         prompt: `今日工时合计：${summary.totalHours}h。请编辑明日计划（可留空跳过）：`,
