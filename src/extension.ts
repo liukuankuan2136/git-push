@@ -12,6 +12,7 @@ import { CompanyDevOpsAdapter } from './core/providers/CompanyDevOpsAdapter';
 import { collectDevOpsCommitMetadata, collectOpsWorkHourRecord, OpsWorkHourInput } from './vscode/QuickPickFlow';
 import { RepoProductMappingStore } from './vscode/RepoProductMapping';
 import { collectRegionCheckReport } from './vscode/RegionCheckFlow';
+import { collectPushDayWork } from './vscode/PushDayWorkFlow';
 
 const execFile = util.promisify(cp.execFile);
 
@@ -81,8 +82,15 @@ export function activate(context: vscode.ExtensionContext): void {
       const config = await configManager.load();
       cache ??= new DevOpsCache(config.cacheTtlMs);
       await runRegionCheck(config, cache);
-    })
+    }),
     // @AI-End A8B3C 20260807 @@claudeCode
+    // @AI-Begin K1L2M 20260809 @@claudeCode
+    vscode.commands.registerCommand('issueLinkPush.pushDayWork', async () => {
+      const config = await configManager.load();
+      cache ??= new DevOpsCache(config.cacheTtlMs);
+      await runPushDayWork(config);
+    })
+    // @AI-End K1L2M 20260809 @@claudeCode
   );
 
   // @AI-Begin V5W2X 20260606 @@claudeCode
@@ -321,6 +329,59 @@ async function runRegionCheck(config: ExtensionConfig, cache: DevOpsCache): Prom
 }
 // @AI-End A8B3C 20260807 @@claudeCode
 // @AI-End C6D9E 20260720 @@claudeCode
+
+// @AI-Begin K1L2M 20260809 @@claudeCode
+async function runPushDayWork(config: ExtensionConfig): Promise<void> {
+  const log = config.debugMode
+    ? (msg: string) => outputChannel.appendLine(msg)
+    : () => {};
+
+  try {
+    if (!config.username || !config.password) {
+      vscode.window.showErrorMessage('请先执行"初始化 DevOps 账号"，保存用户名和密码。');
+      return;
+    }
+
+    const provider = new CompanyDevOpsAdapter({
+      username: config.username,
+      password: config.password,
+      timeoutMs: config.requestTimeoutMs,
+      log
+    });
+
+    await provider.testConnection();
+    log('[pushDayWork] connection verified');
+
+    const collected = await collectPushDayWork(provider, log);
+    if (!collected) {
+      log('[pushDayWork] user cancelled');
+      return;
+    }
+
+    log(`[pushDayWork] submitting report for ${collected.reportDate}...`);
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在提交日报...', cancellable: false },
+      async () => {
+        await provider.submitDailyReport!({
+          nowWork: collected.nowWorkHtml,
+          nextPlan: collected.nextPlan,
+          otherMatters: collected.otherMatters,
+          reportDate: collected.reportDate,
+          toUserIds: collected.toUserIds
+        });
+      }
+    );
+
+    log('[pushDayWork] report submitted successfully');
+    vscode.window.showInformationMessage(`日报已提交 (${collected.reportDate})。`);
+  } catch (error) {
+    log(`[pushDayWork] error: ${error instanceof Error ? error.message : String(error)}`);
+    vscode.window.showErrorMessage(
+      `日报提交失败: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+// @AI-End K1L2M 20260809 @@claudeCode
 
 export function deactivate(): void { }
 

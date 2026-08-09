@@ -1,5 +1,5 @@
 import { ProviderError } from '../AppError';
-import { CreateTaskInput, CreateTaskResult, DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, DevProject, DictValue, ExecuteUser, Module, OpsProject, Product, ProductVersion, Region, WorkHourRecord, WorkHourType } from '../DevOpsProvider';
+import { CreateTaskInput, CreateTaskResult, DailyReportInput, DevOpsProject, DevOpsProvider, DevOpsTask, DevOpsTaskType, DevProject, DictValue, ExecuteUser, Module, OpsProject, Product, ProductVersion, Region, TodayWorkSummary, WorkHourRecord, WorkHourType } from '../DevOpsProvider';
 import { fetchJson, parseResponsePayload, readableHttpError } from '../http';
 
 const DEVOPS_BASE_URL = 'https://devops.ctjsoft.com';
@@ -8,6 +8,9 @@ const DEVOPS_PAGE_ID = 'h7BdNkJ';
 const DEVOPS_DEV_TASK_PAGE_ID = 'AbY8d4R';
 const DEVOPS_DEV_TASK_TOP_MENU_ID = 'DevPro';
 // @AI-End C6D9E 20260720 @@claudeCode
+// @AI-Begin K1L2M 20260809 @@claudeCode — 日报专用 pageId
+const DEVOPS_DAILY_PAGE_ID = 'wlrFlaF';
+// @AI-End K1L2M 20260809 @@claudeCode
 const DEVOPS_TOP_MENU_ID = 'OA';
 const DEVOPS_GROUP_ID = '1';
 
@@ -881,6 +884,140 @@ export class CompanyDevOpsAdapter implements DevOpsProvider {
     return (response.data ?? []).filter((d) => d.eleCode && d.eleName);
   }
 
+  // @AI-Begin K1L2M 20260809 @@claudeCode — 日报 API 方法
+  private dailyHeaders(session: DevOpsSession): Record<string, string> {
+    return {
+      cookie: session.cookie,
+      'user-context': JSON.stringify({
+        userId: session.userId,
+        pageId: DEVOPS_DAILY_PAGE_ID
+      })
+    };
+  }
+
+  async fetchTodayWork(reportDate: string): Promise<TodayWorkSummary> {
+    const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/devopsReportNew/query/loadTodayWork`);
+    url.searchParams.set('userId', session.userId);
+    url.searchParams.set('reportDate', reportDate);
+
+    log(`[fetchTodayWork] url: ${url.toString()}`);
+    const response = await fetchJson<{ status_code?: string; data?: unknown[] }>(
+      this.name, url.toString(), {
+        timeoutMs: this.options.timeoutMs,
+        headers: this.dailyHeaders(session)
+      }
+    );
+
+    const rawTree = response.data ?? [];
+    const total = extractTotalHours(rawTree);
+    const sumNode = rawTree.find((n: unknown) => (n as { id?: string }).id === 'sumTime') as { text?: string } | undefined;
+
+    return {
+      totalHours: total,
+      totalHoursText: sumNode?.text ?? `当日工时合计：${total}h`,
+      rawTree
+    };
+  }
+
+  async fetchTomorrowPlan(): Promise<string> {
+    const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/devopsReportNew/query/loadTomorrowWork`);
+    url.searchParams.set('userId', session.userId);
+
+    log(`[fetchTomorrowPlan] url: ${url.toString()}`);
+    const response = await fetchJson<{ status_code?: string; data?: string }>(
+      this.name, url.toString(), {
+        timeoutMs: this.options.timeoutMs,
+        headers: this.dailyHeaders(session)
+      }
+    );
+    return response.data ?? '';
+  }
+
+  async checkTodayWorkHourEnough(reportDate: string): Promise<string> {
+    const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/devopsReportNew/query/checkTodayWorkHourEnough`);
+    url.searchParams.set('userId', session.userId);
+    url.searchParams.set('reportDate', reportDate);
+
+    log(`[checkTodayWorkHourEnough] url: ${url.toString()}`);
+    const response = await fetchJson<{ status_code?: string; data?: string }>(
+      this.name, url.toString(), {
+        timeoutMs: this.options.timeoutMs,
+        headers: this.dailyHeaders(session)
+      }
+    );
+    return response.data ?? '0';
+  }
+
+  async checkOverdueTasks(): Promise<{ total: number; title: string }> {
+    const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const url = new URL(`${DEVOPS_BASE_URL}/devops-server/config/devopsReportNew/query/checkOverdueTask`);
+    url.searchParams.set('userId', session.userId);
+
+    log(`[checkOverdueTasks] url: ${url.toString()}`);
+    const response = await fetchJson<{ status_code?: string; data?: { overdueTotal?: number; overdueTitle?: string } }>(
+      this.name, url.toString(), {
+        timeoutMs: this.options.timeoutMs,
+        headers: this.dailyHeaders(session)
+      }
+    );
+    return {
+      total: response.data?.overdueTotal ?? 0,
+      title: response.data?.overdueTitle ?? ''
+    };
+  }
+
+  async submitDailyReport(input: DailyReportInput): Promise<void> {
+    const session = await this.getSession();
+    const log = this.options.log ?? (() => {});
+    const payload = {
+      nextPlan: input.nextPlan,
+      nowWork: input.nowWork,
+      otherMatters: input.otherMatters,
+      reportType: '1',
+      toUserIds: input.toUserIds,
+      createUser: session.userId,
+      reportDate: input.reportDate,
+      fileIds: [] as string[]
+    };
+
+    log(`[submitDailyReport] payload size: ${JSON.stringify(payload).length} bytes`);
+    const response = await fetchJson<{ status_code?: string; reason?: string }>(
+      this.name,
+      `${DEVOPS_BASE_URL}/devops-server/config/devopsReportNew/add`,
+      {
+        method: 'POST',
+        timeoutMs: this.options.timeoutMs,
+        headers: {
+          'content-type': 'application/json',
+          cookie: session.cookie,
+          origin: DEVOPS_BASE_URL,
+          'user-context': JSON.stringify({
+            userId: session.userId,
+            pageId: DEVOPS_DAILY_PAGE_ID
+          })
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    log(`[submitDailyReport] response: status_code=${response.status_code}, reason=${response.reason}`);
+    if (response.status_code !== '0000') {
+      throw new ProviderError(
+        response.reason ?? '提交日报失败',
+        undefined,
+        this.name
+      );
+    }
+  }
+  // @AI-End K1L2M 20260809 @@claudeCode
+
   private devTaskUserContextHeaders(session: DevOpsSession): Record<string, string> {
     return {
       cookie: session.cookie,
@@ -1153,3 +1290,13 @@ function getCurrentWeekRange(): { weekStart: string; weekEnd: string } {
   return { weekStart: fmt(monday), weekEnd: fmt(sunday) };
 }
 // @AI-End A8B3C 20260807 @@claudeCode
+
+// @AI-Begin K1L2M 20260809 @@claudeCode
+/** 从 loadTodayWork 返回的树形数据中提取工时合计（小时） */
+function extractTotalHours(tree: unknown[]): number {
+  const sumNode = tree.find((n) => (n as { id?: string })?.id === 'sumTime') as { text?: string } | undefined;
+  if (!sumNode?.text) { return 0; }
+  const match = sumNode.text.match(/([\d.]+)\s*h/i);
+  return match ? parseFloat(match[1]) : 0;
+}
+// @AI-End K1L2M 20260809 @@claudeCode

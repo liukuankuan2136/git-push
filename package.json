@@ -2,7 +2,7 @@
   "name": "issue-link-push",
   "displayName": "Issue Link Push",
   "description": "关联 DevOps 任务并自动生成规范的提交信息且推送代码。",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "publisher": "lkk-vscode-2136",
   "author": {
     "name": "LKK",
@@ -39,6 +39,7 @@
     "onCommand:issueLinkPush.clearCache",
     "onCommand:issueLinkPush.opsWorkHourRecord",
     "onCommand:issueLinkPush.regionCheck",
+    "onCommand:issueLinkPush.pushDayWork",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
@@ -85,6 +86,12 @@
         "title": "区域合规检查",
         "category": "Issue Link Push",
         "icon": "$(location)"
+      },
+      {
+        "command": "issueLinkPush.pushDayWork",
+        "title": "提交日报",
+        "category": "Issue Link Push",
+        "icon": "$(notebook)"
       }
     ],
     "menus": {
@@ -127,6 +134,9 @@
         },
         {
           "command": "issueLinkPush.regionCheck"
+        },
+        {
+          "command": "issueLinkPush.pushDayWork"
         }
       ]
     },

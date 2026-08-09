@@ -48,6 +48,7 @@ const CompanyDevOpsAdapter_1 = require("./core/providers/CompanyDevOpsAdapter");
 const QuickPickFlow_1 = require("./vscode/QuickPickFlow");
 const RepoProductMapping_1 = require("./vscode/RepoProductMapping");
 const RegionCheckFlow_1 = require("./vscode/RegionCheckFlow");
+const PushDayWorkFlow_1 = require("./vscode/PushDayWorkFlow");
 const execFile = util.promisify(cp.execFile);
 function activate(context) {
     const configManager = new ConfigManager_1.ConfigManager(context.secrets);
@@ -112,8 +113,15 @@ function activate(context) {
         const config = await configManager.load();
         cache ??= new DevOpsCache_1.DevOpsCache(config.cacheTtlMs);
         await runRegionCheck(config, cache);
-    })
+    }), 
     // @AI-End A8B3C 20260807 @@claudeCode
+    // @AI-Begin K1L2M 20260809 @@claudeCode
+    vscode.commands.registerCommand('issueLinkPush.pushDayWork', async () => {
+        const config = await configManager.load();
+        cache ??= new DevOpsCache_1.DevOpsCache(config.cacheTtlMs);
+        await runPushDayWork(config);
+    })
+    // @AI-End K1L2M 20260809 @@claudeCode
     );
     // @AI-Begin V5W2X 20260606 @@claudeCode
     // @AI-Begin D5E6F 20260807 @@claudeCode — 升级提醒改为由 issueLinkPush.upgradeReminder 配置控制，默认不提醒
@@ -302,6 +310,45 @@ async function runRegionCheck(config, cache) {
 }
 // @AI-End A8B3C 20260807 @@claudeCode
 // @AI-End C6D9E 20260720 @@claudeCode
+// @AI-Begin K1L2M 20260809 @@claudeCode
+async function runPushDayWork(config) {
+    try {
+        if (!config.username || !config.password) {
+            vscode.window.showErrorMessage('请先执行"初始化 DevOps 账号"，保存用户名和密码。');
+            return;
+        }
+        const provider = new CompanyDevOpsAdapter_1.CompanyDevOpsAdapter({
+            username: config.username,
+            password: config.password,
+            timeoutMs: config.requestTimeoutMs,
+            log: (msg) => providerFactory_1.outputChannel.appendLine(msg)
+        });
+        await provider.testConnection();
+        providerFactory_1.outputChannel.appendLine('[pushDayWork] connection verified');
+        const collected = await (0, PushDayWorkFlow_1.collectPushDayWork)(provider, providerFactory_1.outputChannel);
+        if (!collected) {
+            providerFactory_1.outputChannel.appendLine('[pushDayWork] user cancelled');
+            return;
+        }
+        providerFactory_1.outputChannel.appendLine(`[pushDayWork] submitting report for ${collected.reportDate}...`);
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在提交日报...', cancellable: false }, async () => {
+            await provider.submitDailyReport({
+                nowWork: collected.nowWorkHtml,
+                nextPlan: collected.nextPlan,
+                otherMatters: collected.otherMatters,
+                reportDate: collected.reportDate,
+                toUserIds: collected.toUserIds
+            });
+        });
+        providerFactory_1.outputChannel.appendLine('[pushDayWork] report submitted successfully');
+        vscode.window.showInformationMessage(`日报已提交 (${collected.reportDate})。`);
+    }
+    catch (error) {
+        providerFactory_1.outputChannel.appendLine(`[pushDayWork] error: ${error instanceof Error ? error.message : String(error)}`);
+        vscode.window.showErrorMessage(`日报提交失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+// @AI-End K1L2M 20260809 @@claudeCode
 function deactivate() { }
 // @AI-End D8E4F 20260520 @@cc
 async function runSubmitWithDevOpsTask(config, cache) {

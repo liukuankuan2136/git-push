@@ -133,6 +133,38 @@ export interface DevOpsCommitMetadata {
   workHourTypeName: string;
 }
 
+// @AI-Begin K1L2M 20260809 @@claudeCode — 日报相关数据模型
+export interface TodayWorkItem {
+  spendTaskTime: number;
+  completion: string;
+  taskNo: string;
+  taskId: string;
+  text: string;
+  /** 详细工时描述子节点 */
+  children?: { id: string; text: string }[];
+}
+
+export interface TodayWorkGroup {
+  id: string;
+  text: string;
+  children?: TodayWorkGroup[];
+}
+
+export interface TodayWorkSummary {
+  totalHours: number;
+  totalHoursText: string;
+  rawTree: unknown[];
+}
+
+export interface DailyReportInput {
+  nowWork: string;
+  nextPlan: string;
+  otherMatters: string;
+  reportDate: string;
+  toUserIds: string[];
+}
+// @AI-End K1L2M 20260809 @@claudeCode
+
 export interface DevOpsProvider {
   readonly name: string;
   fetchProjects(): Promise<DevOpsProject[]>;
@@ -183,4 +215,16 @@ export interface DevOpsProvider {
   fetchDictValues?(catalogCode: string): Promise<DictValue[]>;
   getUserId?(): Promise<string>;
   // @AI-End C6D9E 20260720 @@claudeCode
+  // @AI-Begin K1L2M 20260809 @@claudeCode — 日报相关方法
+  /** 拉取今日工时汇总（树形结构） */
+  fetchTodayWork?(reportDate: string): Promise<TodayWorkSummary>;
+  /** 拉取明日计划（来自昨日日报的 nextPlan HTML） */
+  fetchTomorrowPlan?(): Promise<string>;
+  /** 检查今日工时是否 >= 8h，返回工时数字符串如 "7.5" */
+  checkTodayWorkHourEnough?(reportDate: string): Promise<string>;
+  /** 检查逾期任务，返回逾期数量和提示 */
+  checkOverdueTasks?(): Promise<{ total: number; title: string }>;
+  /** 提交日报 */
+  submitDailyReport?(input: DailyReportInput): Promise<void>;
+  // @AI-End K1L2M 20260809 @@claudeCode
 }
