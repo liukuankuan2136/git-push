@@ -16,7 +16,8 @@
       "Skill(browse)",
       "PowerShell(npm run *)",
       "Bash(npm run *)",
-      "WebFetch(domain:devops.ctjsoft.com)"
+      "WebFetch(domain:devops.ctjsoft.com)",
+      "PowerShell(git *)"
     ]
   }
 }
