@@ -29,6 +29,7 @@ src/
     ├── AmendStrategy.ts      # git commit --amend 策略 + 分支状态检查
     ├── QuickPickFlow.ts      # 多步骤 QuickPick 交互流程（选类型→选任务→选工时类型→填工时→填进度→确认）
     ├── RegionCheckFlow.ts    # 区域合规检查交互流程（选项目→选产品→拉取任务→逐条检查→输出报告）
+    ├── PushDayWorkFlow.ts    # 日报提交交互流程（拉取工时→编辑明日计划→确认→提交）
     └── providerFactory.ts    # DevOpsProvider 工厂 + 输出通道
 ```
 
@@ -43,6 +44,7 @@ src/
 | `issueLinkPush.clearCache` | 清除 DevOps 缓存 | 清除内存中的项目和任务缓存 |
 | `issueLinkPush.opsWorkHourRecord` | 运维工时补录 | 创建 Task 并登记工时 |
 | `issueLinkPush.regionCheck` | 区域合规检查 | 选产品→拉本周全部任务→检查地名合规→输出报告 |
+| `issueLinkPush.pushDayWork` | 提交日报 | 拉取今日工时→编辑明日计划→确认→提交日报 |
 
 ## 配置项 (`issueLinkPush.*`)
 
@@ -54,6 +56,7 @@ src/
 | `workHourMode` | enum | `append` | 工时记录模式: append / overwrite |
 | `workContentMode` | enum | `append` | 工时描述模式: append / overwrite |
 | `progressMode` | enum | `overwrite` | 百分比模式: append / overwrite |
+| `debugMode` | boolean | `false` | 调试模式，开启后在输出通道打印 API 请求/响应日志 |
 
 ## 关键交互流程
 
@@ -93,6 +96,23 @@ npm run watch        # tsc -watch -p ./
 
 # 调试: F5 → 启动 Extension Development Host
 ```
+
+### 新增命令的标准改动清单
+
+经过 3 个功能的实际开发验证，每个新增命令都需要改动以下 5 个文件：
+
+| 文件 | 改动内容 |
+|---|---|
+| `src/core/DevOpsProvider.ts` | 新增必要的数据接口（数据模型）+ 在 `DevOpsProvider` 接口上添加 optional 方法（`?`），保持向后兼容 |
+| `src/core/providers/CompanyDevOpsAdapter.ts` | 实现接口方法：声明 `pageId` 常量 → 构造 headers → 调用 `fetchJson` → 解析返回 |
+| `src/vscode/{Feature}Flow.ts` | 新文件：导出单个 `async function collectXxx()` 作为交互流程入口，返回 `Result \| undefined`（`undefined` = 用户取消） |
+| `src/extension.ts` | 注册命令 + 添加 runner 函数（创建 adapter → 调用 Flow → 处理返回结果 → 错误处理/输出） |
+| `package.json` | 添加 `activationEvent`、`commands` 条目、`commandPalette` 条目；视需要添加 `scm/title` 菜单项 |
+
+新功能需要新的 API 端点时，在 `CompanyDevOpsAdapter.ts` 中：
+- 复用 `getSession()` 获取 `{cookie, userId}`（自动处理登录状态）
+- 复用 `fetchJson<T>()` 发起请求（自动处理超时、abort、非标准 JSON 解析）
+- 复用 `dailyHeaders(session)` 或参考其模式构造带 `user-context` 的请求头
 
 ## 代码标记约定
 
@@ -156,3 +176,15 @@ const step2Body = {
 ### API 响应的 IIFE 格式
 
 部分 DevOps API 响应体格式为 `{"status_code":"0000","data":(function(){var N=null,$0="冯彩云",...;function dd(d){return {...}};for(var i=0;i<6;i++){rs.push(dd(data[i]))};return rs;})(),"runtime":1228}`，是 JavaScript 自执行函数而非标准 JSON。`http.ts` 的 `parseResponsePayload` 通过 `Function()` 构造器回退解析这种格式。
+
+### DevOps 各功能模块使用不同的 `pageId`
+
+DevOps 后端通过请求头 `user-context` 中的 `pageId` 字段路由到不同功能模块。**每个模块的 `pageId` 都是独立的，不能复用**：
+
+| 功能模块 | `pageId` | 说明 |
+|---|---|---|
+| Task 管理 (部门工作项) | `h7BdNkJ` | 任务查询、工时记录等 |
+| 研发任务创建 | `AbY8d4R` | 运维工时补录中的创建 Task |
+| 日报 | `wlrFlaF` | 日报的查询和提交 |
+
+**发现新模块 `pageId` 的方法**：从浏览器 DevTools 抓取对应页面的 HAR 文件，在请求的 `user-context` 头中提取 `pageId` 值。猜测或复用旧值会导致接口调用失败。
