@@ -5,3 +5,4 @@ tsconfig.json
 /docs
 /dist
 /scripts/login-addtask-addDayWorkDetail.har
+*.vsix
